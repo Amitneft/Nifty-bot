@@ -12,7 +12,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - run: python bot.py
+      - run: python bot.py --force
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ 8909061584:AAFeucd_hgaHh8-dRotXtm2RQ97mjGfdvuA }}
+          TELEGRAM_CHAT_ID: ${{ 135796046 }}
+Used to build and publish .NET source. Set up a specific version of the .NET and authentication to private NuGet repository
