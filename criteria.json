@@ -1,0 +1,6 @@
+{
+  "top_n": 5,
+  "min_abs_change_pct": 0.0,
+  "notes": "Add your trading criteria here once you share them (e.g. gap %, volume filters, sector bias).",
+  "sources": []
+}
