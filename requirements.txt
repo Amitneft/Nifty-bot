@@ -1,2 +1,7 @@
-yfinance>=0.2.40
 requests>=2.31
+yfinance>=0.2.40
+pandas
+smartapi-python
+pyotp
+logzero
+websocket-client
