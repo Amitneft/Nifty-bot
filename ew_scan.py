@@ -1,4 +1,4 @@
-"""Elliott Wave scanner: Nifty 50 index + its 50 stocks on 1h candles -> Telegram charts.
+"""Elliott Wave scanner: Nifty 50 index + the Nifty 100 stocks on 1h candles -> Telegram charts.
 
 Looks for an impulse count 0-1-2-3-4 (long = uptrend, short = downtrend) and, when wave 4
 sits in the 23.6-50% zone of wave 3, gives entry / stop / target (wave 5, 2R).
@@ -23,27 +23,7 @@ except ImportError:
 
 IST = ZoneInfo("Asia/Kolkata")
 
-NIFTY50 = """ADANIENT ADANIPORTS APOLLOHOSP ASIANPAINT AXISBANK BAJAJ-AUTO BAJFINANCE BAJAJFINSV
-BEL BHARTIARTL CIPLA COALINDIA DRREDDY EICHERMOT ETERNAL GRASIM HCLTECH HDFCBANK HDFCLIFE
-HINDALCO HINDUNILVR ICICIBANK INDIGO INFY ITC JIOFIN JSWSTEEL KOTAKBANK LT M&M MARUTI
-MAXHEALTH NESTLEIND NTPC ONGC POWERGRID RELIANCE SBILIFE SBIN SHRIRAMFIN SUNPHARMA
-TATACONSUM TMPV TATASTEEL TCS TECHM TITAN TRENT ULTRACEMCO WIPRO""".split()
-
-SECTORS = {
-    "IT": "TCS INFY HCLTECH WIPRO TECHM",
-    "Banks": "HDFCBANK ICICIBANK SBIN KOTAKBANK AXISBANK",
-    "Finance": "BAJFINANCE BAJAJFINSV SHRIRAMFIN JIOFIN HDFCLIFE SBILIFE",
-    "Auto": "MARUTI M&M BAJAJ-AUTO EICHERMOT TMPV",
-    "Metals": "TATASTEEL JSWSTEEL HINDALCO COALINDIA",
-    "Energy": "RELIANCE ONGC",
-    "Power": "NTPC POWERGRID",
-    "Pharma": "SUNPHARMA CIPLA DRREDDY APOLLOHOSP MAXHEALTH",
-    "FMCG": "HINDUNILVR ITC NESTLEIND TATACONSUM",
-    "Infra": "LT BEL ADANIENT ADANIPORTS BHARTIARTL",
-    "Cement": "ULTRACEMCO GRASIM",
-    "Consumer": "TITAN TRENT ASIANPAINT ETERNAL INDIGO",
-}
-SECTOR_OF = {s: sec for sec, names in SECTORS.items() for s in names.split()}
+from universe import UNIVERSE, SECTOR_OF  # Nifty 100 list + sectors live in universe.py
 
 CFG = {
     "zone_lo": 0.236,         # wave 4 must retrace at least this much of wave 3 ...
@@ -54,6 +34,7 @@ CFG = {
     "h1_window": 4,           # ... within the last N hours
     "atr_mult": (7, 5, 3.5),  # zig-zag swing sizes tried (x ATR); big swings first
     "max_charts": 8,
+    "max_list": 12,           # rows per TRADE / WATCH list in the summary message
 }
 
 BG, GRID, TXT, MUTED = "#1c1c1f", "#2c2c30", "#e8e8ea", "#8d8d93"
@@ -64,7 +45,7 @@ GREEN, RED, BLUE, GOLD = "#0ecb81", "#f6465d", "#4da3ff", "#f5b800"
 def load_all(now):
     """-> {name: DataFrame(Open, High, Low, Close) with IST index}; unfinished candle dropped."""
     tick = {"NIFTY 50": "^NSEI"}
-    tick.update({s: s + ".NS" for s in NIFTY50})
+    tick.update({s: s + ".NS" for s in UNIVERSE})
     data = yf.download(list(tick.values()), period="60d", interval="1h", group_by="ticker",
                        progress=False, threads=True, auto_adjust=False)
     out = {}
@@ -353,7 +334,9 @@ def build_summary(results, index_df, now, ctx=None):
                           ("WATCH", "👀 *WATCH* (गिनती ठीक, H1 breakout अभी नहीं)")):
         lst = [(k, v) for k, v in stocks.items() if v["status"] == status]
         if lst:
-            parts.append(title + f" — {len(lst)}\n```\n" + "\n".join(row(k, v, ctx) for k, v in lst) + "\n```")
+            more = f"\n… और {len(lst) - CFG['max_list']}" if len(lst) > CFG["max_list"] else ""
+            parts.append(title + f" — {len(lst)}\n```\n"
+                         + "\n".join(row(k, v, ctx) for k, v in lst[: CFG["max_list"]]) + more + "\n```")
     if not stocks:
         parts.append("शेयरों में कोई वैध Elliott setup नहीं मिला।")
     parts.append("_Wave 4, wave 3 का 23.6–50% लौटा हो; Stop = wave-4 का सिरा (अधिकतम "
@@ -369,34 +352,39 @@ def tile_color(chg):
 
 
 def heatmap_png(rows, index, source, now):
-    """Sector-wise heat map: one row per sector, one tile per stock, colour = % change."""
+    """Sector-wise heat map: one block per sector, one tile per stock, colour = % change."""
+    per = 8  # tiles per line
     by = {}
     for r in rows:
         by.setdefault(SECTOR_OF.get(r["sym"], "Other"), []).append(r)
     secs = sorted(by.items(), key=lambda kv: -sum(x["chg"] for x in kv[1]) / len(kv[1]))
-    n = len(secs)
-    fig = plt.figure(figsize=(10, 1.5 + 0.8 * n), dpi=100, facecolor=BG)
-    ax = fig.add_axes([0.01, 0.02, 0.98, 1 - 1.3 / (1.5 + 0.8 * n)], facecolor=BG)
-    ax.set_xlim(0, 10); ax.set_ylim(n, 0); ax.axis("off")
-    tw = 8.0 / 6
-    for i, (sec, lst) in enumerate(secs):
+    lines = sum((len(v) + per - 1) // per for _, v in secs)
+    W, rh, head = 12.0, 0.62, 1.4
+    H = head + rh * lines
+    fig = plt.figure(figsize=(W, H), dpi=100, facecolor=BG)
+    ax = fig.add_axes([0.01, 0.01, 0.98, 1 - (head - 0.1) / H], facecolor=BG)
+    ax.set_xlim(0, 12); ax.set_ylim(lines, 0); ax.axis("off")
+    tw = (12 - 2.2) / per
+    y = 0
+    for sec, lst in secs:
         avg = sum(x["chg"] for x in lst) / len(lst)
-        ax.text(0.05, i + 0.38, sec, color="white", fontsize=12, fontweight="bold", va="center")
-        ax.text(0.05, i + 0.68, f"{avg:+.2f}% avg", color=GREEN if avg >= 0 else RED, fontsize=10, va="center")
+        ax.text(0.05, y + 0.32, sec, color="white", fontsize=12, fontweight="bold", va="center")
+        ax.text(0.05, y + 0.68, f"{avg:+.2f}% avg", color=GREEN if avg >= 0 else RED, fontsize=10, va="center")
         for j, r in enumerate(sorted(lst, key=lambda x: -x["chg"])):
-            x0 = 1.95 + j * tw
-            ax.add_patch(Rectangle((x0, i + 0.06), tw - 0.07, 0.88, fc=tile_color(r["chg"]), ec="none"))
-            ax.text(x0 + (tw - 0.07) / 2, i + 0.36, r["sym"], color="white", fontsize=8.5,
+            x0 = 2.2 + (j % per) * tw
+            y0 = y + j // per
+            ax.add_patch(Rectangle((x0, y0 + 0.05), tw - 0.07, 0.90, fc=tile_color(r["chg"]), ec="none"))
+            ax.text(x0 + (tw - 0.07) / 2, y0 + 0.35, r["sym"], color="white", fontsize=8,
                     fontweight="bold", ha="center", va="center")
-            ax.text(x0 + (tw - 0.07) / 2, i + 0.64, f"{r['chg']:+.2f}%", color="white", fontsize=8.5,
+            ax.text(x0 + (tw - 0.07) / 2, y0 + 0.68, f"{r['chg']:+.2f}%", color="white", fontsize=8,
                     ha="center", va="center")
-    h = 1.5 + 0.8 * n
-    nifty = f"Nifty 50 {index['ltp']:,.2f} ({index['chg']:+.2f}%)" if index else "Nifty 50"
-    fig.text(0.02, 1 - 0.35 / h, "Nifty 50 · sector heat map", color="white", fontsize=15, fontweight="bold")
-    fig.text(0.02, 1 - 0.75 / h, nifty, color=GREEN if (index and index["chg"] >= 0) else RED, fontsize=11,
+        y += (len(lst) + per - 1) // per
+    nifty = f"Nifty 50 {index['ltp']:,.2f} ({index['chg']:+.2f}%)" if index else "Nifty 100"
+    fig.text(0.02, 1 - 0.35 / H, "Nifty 100 · sector heat map", color="white", fontsize=15, fontweight="bold")
+    fig.text(0.02, 1 - 0.75 / H, nifty, color=GREEN if (index and index["chg"] >= 0) else RED, fontsize=11,
              fontweight="bold")
-    fig.text(0.98, 1 - 0.35 / h, now.strftime("%d %b %H:%M IST"), color=MUTED, fontsize=8.5, ha="right")
-    fig.text(0.98, 1 - 0.75 / h, f"source: {source} · colour = % change vs prev close (±3% scale)",
+    fig.text(0.98, 1 - 0.35 / H, now.strftime("%d %b %H:%M IST"), color=MUTED, fontsize=8.5, ha="right")
+    fig.text(0.98, 1 - 0.75 / H, f"source: {source} · colour = % change vs prev close (±3% scale)",
              color=MUTED, fontsize=8, ha="right")
     buf = io.BytesIO()
     fig.savefig(buf, format="png", facecolor=BG)
@@ -436,7 +424,7 @@ def main():
     summary = build_summary(results, data.get("NIFTY 50"), now, ctx)
 
     order = [k for k, v in results.items() if k != "NIFTY 50" and v and v["valid"]]
-    order.sort(key=lambda k: (results[k]["status"] != "TRADE", results[k]["stop_pct"]))  
+    order.sort(key=lambda k: (results[k]["status"] != "TRADE", results[k]["stop_pct"]))
     chart_names = (["NIFTY 50"] if results.get("NIFTY 50") else []) + order[: CFG["max_charts"]]
 
     if "--dry" in sys.argv:
@@ -460,4 +448,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()  
+    main()
