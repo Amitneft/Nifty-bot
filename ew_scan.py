@@ -434,7 +434,8 @@ def main():
     results = {name: best_count(df) for name, df in data.items()}
     ctx = live_context(now)
     summary = build_summary(results, data.get("NIFTY 50"), now, ctx)
-    order = [k for k, v in results.items() order.sort(key=lambda k: (results[k]["status"] != "TRADE", results[k]["stop_pct"]))
+        order = [k for k, v in results.items() if k != "NIFTY 50" and v and v["valid"]]
+    order.sort(key=lambda k: (results[k]["status"] != "TRADE", results[k]["stop_pct"]))
     chart_names = (["NIFTY 50"] if results.get("NIFTY 50") else []) + order[: CFG["max_charts"]]
 
     if "--dry" in sys.argv:
