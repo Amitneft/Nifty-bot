@@ -434,5 +434,28 @@ def main():
     results = {name: best_count(df) for name, df in data.items()}
     ctx = live_context(now)
     summary = build_summary(results, data.get("NIFTY 50"), now, ctx)
+    order = [k for k, v in results.items() order.sort(key=lambda k: (results[k]["status"] != "TRADE", results[k]["stop_pct"]))
+    chart_names = (["NIFTY 50"] if results.get("NIFTY 50") else []) + order[: CFG["max_charts"]]
 
-    order = [k for k, v in results.items()
+    if "--dry" in sys.argv:
+        os.makedirs("out", exist_ok=True)
+        print(summary)
+        if ctx:
+            open("out/heatmap.png", "wb").write(heatmap_png(ctx["rows"], ctx["index"], ctx["source"], now))
+        for nm in chart_names:
+            fn = f"out/{nm.replace(' ', '_').replace('&', 'n')}.png"
+            open(fn, "wb").write(chart_png(nm, data[nm], results[nm], now))
+            print("chart:", fn, results[nm]["side"], "valid" if results[nm]["valid"] else "rejected")
+        return
+    if ctx:
+        send_photo(heatmap_png(ctx["rows"], ctx["index"], ctx["source"], now),
+                   f"🏭 सेक्टर हीट मैप — स्रोत: {ctx['source']}")
+    send_text(summary)
+    for nm in chart_names:
+        c = results[nm]
+        cap = caption_for(nm, c, ctx) if c["valid"] else f"📊 {nm} — {c['side']} गिनती: अभी entry नहीं।\nकारण: {c['fails'][0] if c['fails'] else '-'}"
+        send_photo(chart_png(nm, data[nm], c, now), cap)
+
+
+if __name__ == "__main__":
+    main()
