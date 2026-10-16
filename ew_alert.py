@@ -1,12 +1,18 @@
 """Hourly intraday alert: message only when a brand-new Elliott TRADE setup appears
-(index or any Nifty 100 stock). Reuses all rules from ew_scan.py.
+(Nifty 50 / Nifty Next 50 index or any of their stocks). Reuses all rules from ew_scan.py.
 Run at ~:20 past each hour, 10:20-15:20 IST:   python ew_alert.py [--dry] [--force]
 """
 import os, sys
 from datetime import datetime
 
 import ew_scan as ew
-from ew_scan import CFG, IST, best_count, caption_for, chart_png, load_all, send_photo, send_text
+from ew_scan import CFG, IST, best_count, caption_for, chart_png, send_photo, send_text
+from report import load_ew
+from universe import NEXT50
+
+
+def grp(name):
+    return "Nifty Next 50" if name in NEXT50 or name == "NIFTY NEXT 50" else "Nifty 50"
 
 
 def new_trades(data, results):
@@ -20,7 +26,7 @@ def new_trades(data, results):
         if prev and prev["valid"] and prev["status"] == "TRADE" and prev["side"] == c["side"]:
             continue
         out.append(name)
-    out.sort(key=lambda k: (k != "NIFTY 50", results[k]["stop_pct"]))
+    out.sort(key=lambda k: (k not in ("NIFTY 50", "NIFTY NEXT 50"), results[k]["stop_pct"]))
     return out
 
 
@@ -31,7 +37,7 @@ def alert_run(data, results, now, dry=False):
     if not names:
         return
     head = (f"🚨 *नया TRADE setup* — {now.strftime('%H:%M IST')}\n"
-            + "\n".join(f"{'📈' if results[k]['side'] == 'LONG' else '📉'} {k} {results[k]['side']}"
+            + "\n".join(f"{'📈' if results[k]['side'] == 'LONG' else '📉'} {k} {results[k]['side']} ({grp(k)})"
                         for k in names)
             + "\n_केवल जानकारी, निवेश सलाह नहीं।_")
     if dry:
@@ -45,7 +51,7 @@ def alert_run(data, results, now, dry=False):
         if dry:
             open(f"out/alert_{nm.replace(' ', '_').replace('&', 'n')}.png", "wb").write(png)
         else:
-            send_photo(png, caption_for(nm, c))
+            send_photo(png, caption_for(nm, c).replace(" — ", f" [{grp(nm)}] — ", 1))
 
 
 def main():
@@ -54,7 +60,7 @@ def main():
         print("Weekend - market closed."); return
     if ew.yf is None:
         sys.exit("yfinance not installed")
-    data = load_all(now)
+    data = load_ew(now)
     if len(data) < 40:
         sys.exit(f"Only {len(data)} symbols loaded; aborting.")
     results = {name: best_count(df) for name, df in data.items()}
