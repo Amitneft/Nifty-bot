@@ -37,9 +37,9 @@ jobs:
           cache: pip
       - if: steps.win.outputs.ok == 'true'
         run: pip install -r requirements.txt
-      - name: Gainers / losers scanner
+      - name: Morning report (Nifty 50 direction + Nifty 100 trading + Elliott)
         if: steps.win.outputs.ok == 'true' && inputs.mode != 'alert'
-        run: python bot.py ${{ inputs.force == 'true' && '--force' || '' }}
+        run: python report.py ${{ inputs.force == 'true' && '--force' || '' }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -47,9 +47,9 @@ jobs:
           ANGEL_CLIENT_CODE: ${{ secrets.ANGEL_CLIENT_CODE }}
           ANGEL_PIN: ${{ secrets.ANGEL_PIN }}
           ANGEL_TOTP_SECRET: ${{ secrets.ANGEL_TOTP_SECRET }}
-      - name: Elliott Wave scanner
-        if: always() && steps.win.outputs.ok == 'true'
-        run: python ${{ inputs.mode == 'alert' && 'ew_alert.py' || 'ew_scan.py' }} ${{ inputs.force == 'true' && '--force' || '' }}
+      - name: Hourly Elliott alert (new setups only)
+        if: steps.win.outputs.ok == 'true' && inputs.mode == 'alert'
+        run: python ew_alert.py ${{ inputs.force == 'true' && '--force' || '' }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
