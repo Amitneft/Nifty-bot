@@ -220,20 +220,8 @@ def curve_png(curves, span):
 def load_history(days):
     tick = dict(INDEX_TICKS)
     tick.update({s: s + ".NS" for s in UNIVERSE})
-    data = yf.download(list(tick.values()), period=f"{days}d", interval="1h", group_by="ticker",
-                       progress=False, threads=True, auto_adjust=False)
-    now, out = datetime.now(IST), {}
-    for name, t in tick.items():
-        try:
-            df = data[t][["Open", "High", "Low", "Close"]].dropna().copy()
-            df.index = df.index.tz_convert(IST) if df.index.tz is not None else df.index.tz_localize(IST)
-            if len(df) and df.index[-1] + timedelta(hours=1) > now:
-                df = df.iloc[:-1]
-            if len(df) >= WARM + 60:
-                out[name] = df
-        except Exception as e:
-            print(f"skip {name}: {e}", file=sys.stderr)
-    return out
+    import candles                      # Angel One first, Yahoo Finance as backup
+    return candles.load(tick, days, WARM + 60, datetime.now(IST))
 
 
 def run(data, dry=False, csv_path="backtest_trades.csv"):
