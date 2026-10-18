@@ -3,26 +3,33 @@ on:
   workflow_dispatch:   # triggered by cron-job.org (GitHub's own cron is too late)
     inputs:
       mode:
-        description: "full = 9:15 report; alert = hourly new-setup alerts only"
+        description: "full = 9:15 report | alert = hourly alerts + paper trading | backtest = history test | paper = paper-trading summary"
         required: false
         default: "full"
+      days:
+        description: "backtest only: how many days of history (120-729)"
+        required: false
+        default: "365"
       force:
         description: "true = ignore the 09:10-16:00 weekday window (for tests)"
         required: false
         default: "false"
+permissions:
+  contents: write
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 60
     steps:
       - name: Time window (09:10-16:00 IST, Mon-Fri)
         id: win
         env:
           FORCE: ${{ inputs.force }}
+          MODE: ${{ inputs.mode }}
         run: |
           hm=$((10#$(TZ=Asia/Kolkata date +%H%M)))
           dow=$(TZ=Asia/Kolkata date +%u)
-          if [ "$FORCE" = "true" ] || { [ "$dow" -le 5 ] && [ "$hm" -ge 910 ] && [ "$hm" -le 1600 ]; }; then
+          if [ "$FORCE" = "true" ] || [ "$MODE" = "backtest" ] || [ "$MODE" = "paper" ] || { [ "$dow" -le 5 ] && [ "$hm" -ge 910 ] && [ "$hm" -le 1600 ]; }; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
           else
             echo "ok=false" >> "$GITHUB_OUTPUT"
@@ -37,8 +44,8 @@ jobs:
           cache: pip
       - if: steps.win.outputs.ok == 'true'
         run: pip install -r requirements.txt
-      - name: Morning report (Nifty 50 direction + Nifty 100 trading + Elliott)
-        if: steps.win.outputs.ok == 'true' && inputs.mode != 'alert'
+      - name: Morning report (Nifty 50 direction + Next 50 + Elliott)
+        if: steps.win.outputs.ok == 'true' && (inputs.mode == 'full' || inputs.mode == '')
         run: python report.py ${{ inputs.force == 'true' && '--force' || '' }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -47,13 +54,39 @@ jobs:
           ANGEL_CLIENT_CODE: ${{ secrets.ANGEL_CLIENT_CODE }}
           ANGEL_PIN: ${{ secrets.ANGEL_PIN }}
           ANGEL_TOTP_SECRET: ${{ secrets.ANGEL_TOTP_SECRET }}
-      - name: Hourly Elliott alert (new setups only)
+      - name: Hourly Elliott alert + paper trading
         if: steps.win.outputs.ok == 'true' && inputs.mode == 'alert'
         run: python ew_alert.py ${{ inputs.force == 'true' && '--force' || '' }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          ANGEL_API_KEY: ${{ secrets.ANGEL_API_KEY }}
-          ANGEL_CLIENT_CODE: ${{ secrets.ANGEL_CLIENT_CODE }}
-          ANGEL_PIN: ${{ secrets.ANGEL_PIN }}
-          ANGEL_TOTP_SECRET: ${{ secrets.ANGEL_TOTP_SECRET }}
+      - name: Save paper-trading book
+        if: steps.win.outputs.ok == 'true' && inputs.mode == 'alert'
+        run: |
+          git config user.name "nifty-bot"
+          git config user.email "nifty-bot@users.noreply.github.com"
+          git add paper_trades.json || true
+          if ! git diff --cached --quiet; then
+            git commit -m "paper trades update [skip ci]"
+            git pull --rebase
+            git push
+          fi
+      - name: Back-test
+        if: steps.win.outputs.ok == 'true' && inputs.mode == 'backtest'
+        run: python backtest.py --days ${{ inputs.days }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      - name: Keep the back-test trade list
+        if: steps.win.outputs.ok == 'true' && inputs.mode == 'backtest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest-trades
+          path: backtest_trades.csv
+          if-no-files-found: ignore
+      - name: Paper-trading summary
+        if: steps.win.outputs.ok == 'true' && inputs.mode == 'paper'
+        run: python paper.py
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
