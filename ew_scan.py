@@ -39,6 +39,7 @@ CFG = {
     "w5_w123": 0.618,         # ... or 61.8% of waves 0-3 ... (and "equal to wave 1")
     "min_score": 2,           # at least this many of the 3 guidelines (W2, W3, W4 level) must fit
     "min_rr": 1.5,            # reward : risk to the first target
+    "min_stop_pct": 0.3,      # stop tighter than this is rejected (just noise, costs would eat it)
     "max_stop_pct": 4.5,      # stop wider than this is rejected
     "h1_lookback": 10,        # H1 breakout = close beyond the previous N candles' high/low
     "h1_window": 4,           # ... within the last N hours
@@ -149,6 +150,8 @@ def analyse(df, pts):
     else:
         if stop_pct > CFG["max_stop_pct"]:
             fails.append(f"Stop width {stop_pct:.1f}% is above the {CFG['max_stop_pct']:g}% maximum.")
+        elif stop_pct < CFG["min_stop_pct"]:
+            fails.append(f"Stop width {stop_pct:.2f}% is under the {CFG['min_stop_pct']:g}% minimum (too tight).")
         if not ok_t:
             fails.append("No wave-5 projection clears the end of wave 3.")
         elif rr1 < CFG["min_rr"]:
