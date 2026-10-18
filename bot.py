@@ -124,7 +124,17 @@ def angel_login():
     import pyotp
     from SmartApi import SmartConnect
     api = SmartConnect(api_key=os.environ["ANGEL_API_KEY"].strip())
-    totp = pyotp.TOTP("".join(os.environ["ANGEL_TOTP_SECRET"].split())).now()
+    raw = os.environ["ANGEL_TOTP_SECRET"]
+    if "secret=" in raw:                      # whole otpauth:// link pasted
+        raw = raw.split("secret=")[1].split("&")[0]
+    sec = "".join(ch for ch in raw.upper() if ch.isalnum())
+    bad = [ch for ch in sec if ch not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"]
+    if bad or len(sec) < 16:                  # never print the secret itself
+        raise RuntimeError(
+            f"ANGEL_TOTP_SECRET looks wrong: length {len(sec)}, "
+            f"{len(bad)} invalid characters (only A-Z and 2-7 are allowed, 16-32 long). "
+            + ("It looks like a 6-digit code, not the secret. " if sec.isdigit() else ""))
+    totp = pyotp.TOTP(sec).now()
     d = api.generateSession(os.environ["ANGEL_CLIENT_CODE"].strip(),
                             os.environ["ANGEL_PIN"].strip(), totp)
     if not d or not d.get("status"):
