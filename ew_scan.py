@@ -1,11 +1,12 @@
-"""Elliott Wave scanner: Nifty 50 index + the Nifty 100 stocks on 1h candles -> Telegram charts.
+"""Elliott Wave engine (rules, charts, captions, Telegram senders). Used by report.py and ew_alert.py.
 
 Looks for an impulse count 0-1-2-3-4 (long = uptrend, short = downtrend) and, when wave 4
-sits in the 23.6-50% zone of wave 3, gives entry / stop / target (wave 5, 2R).
-Run after 09:15 IST on trading days:   python ew_scan.py [--dry] [--force]
+sits in the 14.6-38.2% zone of wave 3, gives entry / stop / two wave-5 targets.
+Elliott guidelines used: W2 50/61.8/76.4/85.4% of W1, W3 >= 161.8% of W1, W4 14.6/23.6/38.2% of W3,
+W5 = 123.6-161.8% of W4, or equal to W1, or 61.8% of waves 0-3.
 """
 import io, os, sys, textwrap
-from datetime import datetime, timedelta, timezone
+from datetime import timezone
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -26,9 +27,18 @@ IST = ZoneInfo("Asia/Kolkata")
 from universe import UNIVERSE, SECTOR_OF  # Nifty 100 list + sectors live in universe.py
 
 CFG = {
-    "zone_lo": 0.236,         # wave 4 must retrace at least this much of wave 3 ...
-    "zone_hi": 0.50,          # ... and at most this much
-    "rr": 2.0,                # target = entry -/+ rr x risk
+    "zone_lo": 0.146,         # wave 4 retraces 14.6% ... 
+    "zone_hi": 0.382,         # ... to 38.2% of wave 3 (the entry zone)
+    "zone_tol": 0.03,         # tolerance around the zone edges (3 percentage points)
+    "w2_levels": (0.50, 0.618, 0.764, 0.854),   # wave 2 as a fraction of wave 1
+    "w2_tol": 0.06,
+    "w3_min": 1.5,            # wave 3 >= 161.8% of wave 1 (1.5 = a little tolerance)
+    "w4_levels": (0.146, 0.236, 0.382),         # wave 4 as a fraction of wave 3
+    "w4_tol": 0.04,
+    "w5_w4": (1.236, 1.618),  # wave 5 = 123.6% / 161.8% of wave 4 ...
+    "w5_w123": 0.618,         # ... or 61.8% of waves 0-3 ... (and "equal to wave 1")
+    "min_score": 2,           # at least this many of the 3 guidelines (W2, W3, W4 level) must fit
+    "min_rr": 1.5,            # reward : risk to the first target
     "max_stop_pct": 4.5,      # stop wider than this is rejected
     "h1_lookback": 10,        # H1 breakout = close beyond the previous N candles' high/low
     "h1_window": 4,           # ... within the last N hours
@@ -39,27 +49,6 @@ CFG = {
 
 BG, GRID, TXT, MUTED = "#1c1c1f", "#2c2c30", "#e8e8ea", "#8d8d93"
 GREEN, RED, BLUE, GOLD = "#0ecb81", "#f6465d", "#4da3ff", "#f5b800"
-
-
-# ------------------------------------------------------------------- data
-def load_all(now):
-    """-> {name: DataFrame(Open, High, Low, Close) with IST index}; unfinished candle dropped."""
-    tick = {"NIFTY 50": "^NSEI"}
-    tick.update({s: s + ".NS" for s in UNIVERSE})
-    data = yf.download(list(tick.values()), period="60d", interval="1h", group_by="ticker",
-                       progress=False, threads=True, auto_adjust=False)
-    out = {}
-    for name, t in tick.items():
-        try:
-            df = data[t][["Open", "High", "Low", "Close"]].dropna().copy()
-            df.index = df.index.tz_convert(IST) if df.index.tz is not None else df.index.tz_localize(IST)
-            if len(df) and df.index[-1] + timedelta(hours=1) > now:
-                df = df.iloc[:-1]  # candle still forming
-            if len(df) >= 60:
-                out[name] = df
-        except Exception as e:
-            print(f"skip {name}: {e}", file=sys.stderr)
-    return out
 
 
 # ------------------------------------------------------------------ waves
@@ -95,6 +84,12 @@ def zigzag(H, L, dev):
     return piv
 
 
+def _near(x, levels, tol):
+    """nearest guideline level within tol, else None"""
+    lv = min(levels, key=lambda l: abs(x - l))
+    return lv if abs(x - lv) <= tol else None
+
+
 def analyse(df, pts):
     """Test five pivots as impulse 0-1-2-3-4. Everything is done in 'long space'
     (prices x -1 for a downtrend) so one set of rules serves both directions."""
@@ -104,11 +99,14 @@ def analyse(df, pts):
     O, H, L, C = (df[c].values for c in ("Open", "High", "Low", "Close"))
     qH, qC = (H, C) if s == 1 else (-L, -C)
     close_q, n = qC[-1], len(C)
-    w1, w3 = q[1] - q[0], q[3] - q[2]
-    zl, zh = CFG["zone_lo"], CFG["zone_hi"]
-    r4 = (q[3] - q[4]) / w3 if w3 > 0 else 9.0
+    w1, w3, w4 = q[1] - q[0], q[3] - q[2], q[3] - q[4]
+    zl, zh, tol = CFG["zone_lo"], CFG["zone_hi"], CFG["zone_tol"]
+    r2 = (q[1] - q[2]) / w1 if w1 > 0 else 9.0
+    ext3 = w3 / w1 if w1 > 0 else 0.0
+    r4 = w4 / w3 if w3 > 0 else 9.0
     r_now = (q[3] - close_q) / w3 if w3 > 0 else 9.0
     fails = []
+    # --- hard rules (never broken in an impulse)
     if q[2] <= q[0]:
         fails.append("Wave 2 retraced past the start of wave 1")
     if q[3] <= q[1]:
@@ -117,24 +115,44 @@ def analyse(df, pts):
         fails.append("Wave 3 is shorter than wave 1")
     if q[4] <= q[1]:
         fails.append("Wave 4 overlaps wave 1")
-    if r4 > zh:
+    # --- wave 4 entry zone: 14.6-38.2% of wave 3 (plus tolerance)
+    if r4 > zh + tol:
         fails.append(f"Wave 4 ({side.lower()}) has pulled back {r4 * 100:.0f}% of wave 3, past the "
-                     f"{zh * 100:.0f}% limit: this count cannot give an entry (a new wave 1-2-3 is needed).")
-    elif r4 < zl:
-        fails.append(f"Wave 4 ({side.lower()}) pulled back only {r4 * 100:.0f}% of wave 3, under {zl * 100:.1f}%.")
-    elif not (zl <= r_now <= zh):
+                     f"{(zh + tol) * 100:.0f}% limit: no entry on this count.")
+    elif r4 < zl - tol:
+        fails.append(f"Wave 4 ({side.lower()}) pulled back only {r4 * 100:.0f}% of wave 3, under {(zl - tol) * 100:.0f}%.")
+    elif not (zl - tol <= r_now <= zh + tol):
         fails.append(f"Price sits at {r_now * 100:.0f}% of wave 3, outside the "
-                     f"{zl * 100:.1f}-{zh * 100:.0f}% entry zone.")
+                     f"{zl * 100:.1f}-{zh * 100:.1f}% entry zone.")
+    # --- guidelines (often, not always): score out of 3
+    l2, l4 = _near(r2, CFG["w2_levels"], CFG["w2_tol"]), _near(r4, CFG["w4_levels"], CFG["w4_tol"])
+    g2, g3, g4 = l2 is not None, ext3 >= CFG["w3_min"], l4 is not None
+    score = int(g2) + int(g3) + int(g4)
+    if score < CFG["min_score"]:
+        fails.append(f"Guideline fit {score}/3 (W2 {r2 * 100:.0f}%, W3 {ext3 * 100:.0f}% of W1, "
+                     f"W4 {r4 * 100:.0f}% of W3): need {CFG['min_score']}.")
+    # --- stop, wave-5 targets, reward:risk
     risk = close_q - q[4]
     stop_pct = risk / abs(close_q) * 100 if close_q else 99
-    target_q = close_q + CFG["rr"] * risk
+    projs = {
+        f"{CFG['w5_w4'][0] * 100:.1f}% of W4": q[4] + CFG["w5_w4"][0] * w4,
+        f"{CFG['w5_w4'][1] * 100:.1f}% of W4": q[4] + CFG["w5_w4"][1] * w4,
+        "W5 = W1": q[4] + w1,
+        f"{CFG['w5_w123'] * 100:.1f}% of W0-3": q[4] + CFG["w5_w123"] * (q[3] - q[0]),
+    }
+    ok_t = sorted((v, k) for k, v in projs.items() if v > max(q[3], close_q))
+    t1_q, t1_lbl = ok_t[0] if ok_t else (close_q, "-")
+    t2_q, t2_lbl = ok_t[-1] if ok_t else (close_q, "-")
+    rr1 = (t1_q - close_q) / risk if risk > 0 else 0.0
     if risk <= 0:
         fails.append("Price is already beyond the wave-4 extreme (stop).")
     else:
         if stop_pct > CFG["max_stop_pct"]:
             fails.append(f"Stop width {stop_pct:.1f}% is above the {CFG['max_stop_pct']:g}% maximum.")
-        if target_q <= q[3]:
-            fails.append("Target does not clear the end of wave 3.")
+        if not ok_t:
+            fails.append("No wave-5 projection clears the end of wave 3.")
+        elif rr1 < CFG["min_rr"]:
+            fails.append(f"Reward:risk to target 1 is only {rr1:.1f} (need {CFG['min_rr']:g}).")
     # H1 breakout the same way, within the last few hours
     h1_ago = None
     lb = CFG["h1_lookback"]
@@ -145,8 +163,9 @@ def analyse(df, pts):
     valid = not fails
     return {
         "side": side, "s": s, "pts": pts, "valid": valid, "fails": fails,
-        "r4": r4, "r_now": r_now, "stop_pct": stop_pct, "h1_ago": h1_ago,
-        "entry": s * close_q, "stop": s * q[4], "target": s * target_q,
+        "r2": r2, "ext3": ext3, "r4": r4, "r_now": r_now, "stop_pct": stop_pct, "h1_ago": h1_ago,
+        "g": (g2, g3, g4), "score": score, "rr1": rr1, "t1_lbl": t1_lbl, "t2_lbl": t2_lbl,
+        "entry": s * close_q, "stop": s * q[4], "target": s * t1_q, "target2": s * t2_q,
         "zone": (s * (q[3] - zl * w3), s * (q[3] - zh * w3)),
         "status": ("TRADE" if h1_ago is not None else "WATCH") if valid else None,
     }
@@ -167,7 +186,7 @@ def best_count(df):
                 cands.append(c)
     if not cands:
         return None
-    cands.sort(key=lambda c: (not c["valid"], len(c["fails"]), c["h1_ago"] is None, -c["pts"][4][0]))
+    cands.sort(key=lambda c: (not c["valid"], len(c["fails"]), -c["score"], c["h1_ago"] is None, -c["pts"][4][0]))
     return cands[0]
 
 
@@ -195,16 +214,20 @@ def chart_png(name, df, c, now):
 
     levels = [d.High.max(), d.Low.min()]
     if ok:
-        levels += [c["stop"], c["target"]]
+        levels += [c["stop"], c["target"], c["target2"]]
         lo_z, hi_z = sorted(c["zone"])
         ax.add_patch(Rectangle((xs[3], lo_z), right - xs[3], hi_z - lo_z, fc=GOLD, alpha=0.16, ec="none", zorder=1))
-        ax.text(right, lo_z, "entry zone 23.6-50%", color=GOLD, fontsize=8.5, ha="right", va="top")
+        ax.text(right, lo_z, f"entry zone {CFG['zone_lo'] * 100:.1f}-{CFG['zone_hi'] * 100:.1f}%", color=GOLD, fontsize=8.5, ha="right", va="top")
         ax.hlines(c["stop"], xs[4], right, colors=RED, linestyles="--", lw=1.3, zorder=4)
         ax.text(right, c["stop"], f"stop {fp(c['stop'])}", color=RED, fontsize=8.5, ha="right",
                 va="bottom" if s == -1 else "top")
         ax.hlines(c["target"], xs[3], right, colors=GREEN, linestyles="--", lw=1.3, zorder=4)
-        ax.text(right, c["target"], f"target (wave 5) {fp(c['target'])}", color=GREEN, fontsize=8.5,
+        ax.text(right, c["target"], f"target 1 {fp(c['target'])}  ({c['t1_lbl']})", color=GREEN, fontsize=8.5,
                 ha="right", va="bottom")
+        if abs(c["target2"] - c["target"]) > 1e-9:
+            ax.hlines(c["target2"], xs[3], right, colors=GREEN, linestyles=":", lw=1.1, zorder=4, alpha=0.8)
+            ax.text(right, c["target2"], f"target 2 {fp(c['target2'])}  ({c['t2_lbl']})", color=GREEN,
+                    fontsize=8, ha="right", va="bottom", alpha=0.9)
     ymin, ymax = min(levels), max(levels)
     pad = (ymax - ymin) * 0.10
     ax.set_ylim(ymin - pad, ymax + pad)
@@ -235,13 +258,14 @@ def chart_png(name, df, c, now):
     sub = f"wave 4 under way · {c['side']} " + ("setup" if ok else "count (no entry)")
     fig.text(0.025, 0.895, sub, color=(GREEN if c["status"] == "TRADE" else GOLD) if ok else MUTED,
              fontsize=11, fontweight="bold")
-    right_txt = (f"entry {fp(c['entry'])} · stop {fp(c['stop'])} · target {fp(c['target'])} ({CFG['rr']:.1f}R)"
+    right_txt = (f"entry {fp(c['entry'])} · stop {fp(c['stop'])} · T1 {fp(c['target'])} · T2 {fp(c['target2'])}"
                  if ok else "entry now: none")
     fig.text(0.975, 0.897, right_txt, color=TXT, fontsize=10, ha="right")
 
     if ok:
-        l1 = (f"Wave 4 ({c['side'].lower()}) has pulled back {c['r4'] * 100:.0f}% of wave 3, inside the "
-              f"23.6-50% zone. Wave 5 should run beyond the end of wave 3.")
+        mk = lambda b: "ok" if b else "-"
+        l1 = (f"W2 {c['r2'] * 100:.0f}% of W1 ({mk(c['g'][0])}) · W3 {c['ext3'] * 100:.0f}% of W1 ({mk(c['g'][1])}) · "
+              f"W4 {c['r4'] * 100:.0f}% of W3 ({mk(c['g'][2])}) · fit {c['score']}/3")
     else:
         l1 = c["fails"][0] if c["fails"] else ""
     if c["h1_ago"] is not None:
@@ -249,7 +273,8 @@ def chart_png(name, df, c, now):
     else:
         l2 = (f"No H1 breakout the same way in the last {CFG['h1_window']}h. "
               f"H1 comes first (at the wave-3 push), so this count is unlikely to trade.")
-    l3 = f"Stop width now {c['stop_pct']:.1f}% (max {CFG['max_stop_pct']:g}%)" if c["stop_pct"] > 0 else ""
+    l3 = (f"Stop width {c['stop_pct']:.1f}% (max {CFG['max_stop_pct']:g}%) · reward:risk to T1 = {c['rr1']:.1f}"
+          if c["valid"] else (f"Stop width now {c['stop_pct']:.1f}% (max {CFG['max_stop_pct']:g}%)" if c["stop_pct"] > 0 else ""))
     for y, txt, col in ((0.105, l1, TXT), (0.072, l2, MUTED), (0.039, l3, MUTED)):
         fig.text(0.025, y, textwrap.shorten(txt, 150, placeholder="..."), color=col, fontsize=9)
     fig.text(0.975, 0.012, "projection, not a call · EW + H1 rules", color=MUTED, fontsize=8, ha="right")
@@ -297,155 +322,40 @@ def ctx_note(name, c, ctx):
     return " | ".join(out)
 
 
+def grade(c):
+    return {3: "A ⭐⭐⭐", 2: "B ⭐⭐", 1: "C ⭐"}.get(c["score"], "-")
+
+
 def caption_for(name, c, ctx=None):
     tag = "TRADE (H1 पक्का)" if c["status"] == "TRADE" else "WATCH (H1 breakout अभी नहीं)"
+    mk = lambda b: "✓" if b else "✗"
+    note = ctx_note(name, c, ctx)
     return (f"{'📈' if c['side'] == 'LONG' else '📉'} {name} — {c['side']} — {tag}\n"
-            f"Entry {fp(c['entry'])} | SL {fp(c['stop'])} | Target {fp(c['target'])} ({CFG['rr']:.1f}R)\n"
-            f"Stop चौड़ाई {c['stop_pct']:.1f}% | Wave 4 pullback {c['r4'] * 100:.0f}%\n"
-            + (ctx_note(name, c, ctx) + "\n" if ctx_note(name, c, ctx) else "")
+            f"Entry {fp(c['entry'])} | SL {fp(c['stop'])}\n"
+            f"Target 1 {fp(c['target'])} ({c['t1_lbl']})\nTarget 2 {fp(c['target2'])} ({c['t2_lbl']})\n"
+            f"Reward:Risk (T1) 1:{c['rr1']:.1f} | Stop चौड़ाई {c['stop_pct']:.1f}%\n"
+            f"W2 {c['r2'] * 100:.0f}% {mk(c['g'][0])} | W3 {c['ext3'] * 100:.0f}% {mk(c['g'][1])} | "
+            f"W4 {c['r4'] * 100:.0f}% {mk(c['g'][2])} | ग्रेड {grade(c)}\n"
+            + (note + "\n" if note else "")
             + "केवल जानकारी, निवेश सलाह नहीं।")
 
 
 def row(name, c, ctx=None):
     note = ctx_note(name, c, ctx)
-    return (f"{c['side']:<6}{name}  (w4 {c['r4'] * 100:.0f}%)\n"
-            f" E {fp(c['entry'])}  SL {fp(c['stop'])}\n T {fp(c['target'])}  stop {c['stop_pct']:.1f}%"
+    return (f"{c['side']:<6}{name}  ({grade(c)[0]}, w4 {c['r4'] * 100:.0f}%)\n"
+            f" E {fp(c['entry'])}  SL {fp(c['stop'])}\n T1 {fp(c['target'])}  T2 {fp(c['target2'])}\n"
+            f" RR 1:{c['rr1']:.1f}  stop {c['stop_pct']:.1f}%"
             + (f"\n {note}" if note else ""))
 
 
-def build_summary(results, index_df, now, ctx=None):
-    ts = now.strftime("%a %d %b %Y, %H:%M IST")
-    parts = [f"📐 *Elliott Wave स्कैन (1h)* — {ts}"]
-    if ctx and ctx.get("index"):
-        parts.append(f"Nifty 50 (अभी): {ctx['index']['ltp']:,.2f} ({ctx['index']['chg']:+.2f}%)")
-    elif index_df is not None:
-        close = index_df.Close
-        prev = close[close.index.date < close.index[-1].date()]
-        chg = (close.iloc[-1] / prev.iloc[-1] - 1) * 100 if len(prev) else 0.0
-        parts.append(f"Nifty 50: {close.iloc[-1]:,.2f} ({chg:+.2f}%)")
-    nc = results.get("NIFTY 50")
-    if nc and nc["valid"]:
-        parts.append(f"Nifty index: {nc['side']} setup ({nc['status']}) — Entry {fp(nc['entry'])}, "
-                     f"SL {fp(nc['stop'])}, Target {fp(nc['target'])}")
-    else:
-        parts.append("Nifty index: कोई वैध entry गिनती नहीं")
-    stocks = {k: v for k, v in results.items() if k != "NIFTY 50" and v and v["valid"]}
-    for status, title in (("TRADE", "✅ *TRADE* (गिनती ठीक + H1 breakout)"),
-                          ("WATCH", "👀 *WATCH* (गिनती ठीक, H1 breakout अभी नहीं)")):
-        lst = [(k, v) for k, v in stocks.items() if v["status"] == status]
-        if lst:
-            more = f"\n… और {len(lst) - CFG['max_list']}" if len(lst) > CFG["max_list"] else ""
-            parts.append(title + f" — {len(lst)}\n```\n"
-                         + "\n".join(row(k, v, ctx) for k, v in lst[: CFG["max_list"]]) + more + "\n```")
-    if not stocks:
-        parts.append("शेयरों में कोई वैध Elliott setup नहीं मिला।")
-    parts.append("_Wave 4, wave 3 का 23.6–50% लौटा हो; Stop = wave-4 का सिरा (अधिकतम "
-                 f"{CFG['max_stop_pct']:g}%); Target = {CFG['rr']:g}R। 1h गिनती अनुमान है, पक्की नहीं। "
-                 "केवल जानकारी, निवेश सलाह नहीं।_")
-    return "\n\n".join(parts)
+FOOTER = ("_नियम: W2 = W1 का 50/61.8/76.4/85.4%, W3 ≥ W1 का 161.8%, W4 = W3 का 14.6/23.6/38.2% "
+          f"(entry पट्टी 14.6–38.2%); ग्रेड = इन 3 में से कितने मिले (कम से कम {CFG['min_score']})। "
+          f"Stop = wave-4 का सिरा (अधिकतम {CFG['max_stop_pct']:g}%); Target 1/2 = wave 5 के अनुमान "
+          f"(W4 का 123.6/161.8%, W1 के बराबर, W0-3 का 61.8%); Reward:Risk ≥ {CFG['min_rr']:g}। "
+          "1h गिनती अनुमान है, पक्की नहीं। केवल जानकारी, निवेश सलाह नहीं।_")
 
 
 def tile_color(chg):
     t = max(-3.0, min(3.0, chg)) / 3.0
     neutral, tgt = (0x3a, 0x3a, 0x40), ((0x0f, 0x9d, 0x62) if t >= 0 else (0xc0, 0x2a, 0x3a))
     return tuple((n + (g - n) * abs(t)) / 255 for n, g in zip(neutral, tgt))
-
-
-def heatmap_png(rows, index, source, now):
-    """Sector-wise heat map: one block per sector, one tile per stock, colour = % change."""
-    per = 8  # tiles per line
-    by = {}
-    for r in rows:
-        by.setdefault(SECTOR_OF.get(r["sym"], "Other"), []).append(r)
-    secs = sorted(by.items(), key=lambda kv: -sum(x["chg"] for x in kv[1]) / len(kv[1]))
-    lines = sum((len(v) + per - 1) // per for _, v in secs)
-    W, rh, head = 12.0, 0.62, 1.4
-    H = head + rh * lines
-    fig = plt.figure(figsize=(W, H), dpi=100, facecolor=BG)
-    ax = fig.add_axes([0.01, 0.01, 0.98, 1 - (head - 0.1) / H], facecolor=BG)
-    ax.set_xlim(0, 12); ax.set_ylim(lines, 0); ax.axis("off")
-    tw = (12 - 2.2) / per
-    y = 0
-    for sec, lst in secs:
-        avg = sum(x["chg"] for x in lst) / len(lst)
-        ax.text(0.05, y + 0.32, sec, color="white", fontsize=12, fontweight="bold", va="center")
-        ax.text(0.05, y + 0.68, f"{avg:+.2f}% avg", color=GREEN if avg >= 0 else RED, fontsize=10, va="center")
-        for j, r in enumerate(sorted(lst, key=lambda x: -x["chg"])):
-            x0 = 2.2 + (j % per) * tw
-            y0 = y + j // per
-            ax.add_patch(Rectangle((x0, y0 + 0.05), tw - 0.07, 0.90, fc=tile_color(r["chg"]), ec="none"))
-            ax.text(x0 + (tw - 0.07) / 2, y0 + 0.35, r["sym"], color="white", fontsize=8,
-                    fontweight="bold", ha="center", va="center")
-            ax.text(x0 + (tw - 0.07) / 2, y0 + 0.68, f"{r['chg']:+.2f}%", color="white", fontsize=8,
-                    ha="center", va="center")
-        y += (len(lst) + per - 1) // per
-    nifty = f"Nifty 50 {index['ltp']:,.2f} ({index['chg']:+.2f}%)" if index else "Nifty 100"
-    fig.text(0.02, 1 - 0.35 / H, "Nifty 100 · sector heat map", color="white", fontsize=15, fontweight="bold")
-    fig.text(0.02, 1 - 0.75 / H, nifty, color=GREEN if (index and index["chg"] >= 0) else RED, fontsize=11,
-             fontweight="bold")
-    fig.text(0.98, 1 - 0.35 / H, now.strftime("%d %b %H:%M IST"), color=MUTED, fontsize=8.5, ha="right")
-    fig.text(0.98, 1 - 0.75 / H, f"source: {source} · colour = % change vs prev close (±3% scale)",
-             color=MUTED, fontsize=8, ha="right")
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", facecolor=BG)
-    plt.close(fig)
-    return buf.getvalue()
-
-
-def live_context(now):
-    """Live quotes from bot.py (Angel -> NSE -> Yahoo). None if unavailable."""
-    try:
-        import bot
-        rows, index, source, _ = bot.fetch_all(now)
-        if len(rows) < 40:
-            return None
-        sec = {}
-        for r in rows:
-            sec.setdefault(SECTOR_OF.get(r["sym"], "Other"), []).append(r["chg"])
-        return {"rows": rows, "index": index, "source": source,
-                "sector": {k: sum(v) / len(v) for k, v in sec.items()},
-                "chg": {r["sym"]: r["chg"] for r in rows}}
-    except Exception as e:
-        print(f"live context unavailable: {e}", file=sys.stderr)
-        return None
-
-
-def main():
-    now = datetime.now(IST)
-    if now.weekday() >= 5 and "--force" not in sys.argv:
-        print("Weekend - market closed."); return
-    if yf is None:
-        sys.exit("yfinance not installed")
-    data = load_all(now)
-    if len(data) < 40:
-        sys.exit(f"Only {len(data)} symbols loaded; aborting.")
-    results = {name: best_count(df) for name, df in data.items()}
-    ctx = live_context(now)
-    summary = build_summary(results, data.get("NIFTY 50"), now, ctx)
-
-    order = [k for k, v in results.items() if k != "NIFTY 50" and v and v["valid"]]
-    order.sort(key=lambda k: (results[k]["status"] != "TRADE", results[k]["stop_pct"]))
-    chart_names = (["NIFTY 50"] if results.get("NIFTY 50") else []) + order[: CFG["max_charts"]]
-
-    if "--dry" in sys.argv:
-        os.makedirs("out", exist_ok=True)
-        print(summary)
-        if ctx:
-            open("out/heatmap.png", "wb").write(heatmap_png(ctx["rows"], ctx["index"], ctx["source"], now))
-        for nm in chart_names:
-            fn = f"out/{nm.replace(' ', '_').replace('&', 'n')}.png"
-            open(fn, "wb").write(chart_png(nm, data[nm], results[nm], now))
-            print("chart:", fn, results[nm]["side"], "valid" if results[nm]["valid"] else "rejected")
-        return
-    if ctx:
-        send_photo(heatmap_png(ctx["rows"], ctx["index"], ctx["source"], now),
-                   f"🏭 सेक्टर हीट मैप — स्रोत: {ctx['source']}")
-    send_text(summary)
-    for nm in chart_names:
-        c = results[nm]
-        cap = caption_for(nm, c, ctx) if c["valid"] else f"📊 {nm} — {c['side']} गिनती: अभी entry नहीं।\nकारण: {c['fails'][0] if c['fails'] else '-'}"
-        send_photo(chart_png(nm, data[nm], c, now), cap)
-
-
-if __name__ == "__main__":
-    main()
