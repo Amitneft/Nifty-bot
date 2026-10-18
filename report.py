@@ -134,20 +134,8 @@ def load_ew(now):
     """1h candles: both indices + all 100 stocks -> {name: DataFrame}."""
     tick = {g["idx_name"]: g["idx_tick"] for g in GROUPS}
     tick.update({s: s + ".NS" for s in UNIVERSE})
-    data = yf.download(list(tick.values()), period="60d", interval="1h", group_by="ticker",
-                       progress=False, threads=True, auto_adjust=False)
-    out = {}
-    for name, t in tick.items():
-        try:
-            df = data[t][["Open", "High", "Low", "Close"]].dropna().copy()
-            df.index = df.index.tz_convert(IST) if df.index.tz is not None else df.index.tz_localize(IST)
-            if len(df) and df.index[-1] + timedelta(hours=1) > now:
-                df = df.iloc[:-1]  # candle still forming
-            if len(df) >= 60:
-                out[name] = df
-        except Exception as e:
-            print(f"skip {name}: {e}", file=sys.stderr)
-    return out
+    import candles                      # Angel One first, Yahoo Finance as backup
+    return candles.load(tick, 60, 60, now)
 
 
 def group_ctx(rows):
