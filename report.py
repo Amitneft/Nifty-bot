@@ -176,9 +176,7 @@ def ew_summary(g, results, idx, now, ctx):
                          + "\n".join(ew_scan.row(k, v, ctx) for k, v in lst[: CFG["max_list"]]) + more + "\n```")
     if not stocks:
         parts.append("शेयरों में कोई वैध Elliott setup नहीं मिला।")
-    parts.append("_Wave 4, wave 3 का 23.6–50% लौटा हो; Stop = wave-4 का सिरा (अधिकतम "
-                 f"{CFG['max_stop_pct']:g}%); Target = {CFG['rr']:g}R। 1h गिनती अनुमान है, पक्की नहीं। "
-                 "केवल जानकारी, निवेश सलाह नहीं।_")
+    parts.append(ew_scan.FOOTER)
     return "\n\n".join(parts), stocks
 
 
