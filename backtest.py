@@ -1,7 +1,8 @@
 """Back-test of the Elliott Wave strategy (same rules as the live scanner) on 1h candles.
 
 Walk-forward: at every completed candle the wave counter sees only the past, exactly like the live bot.
-A signal = a NEW TRADE setup (the same rule the hourly alert uses). Entry = open of the next candle,
+A signal = a NEW TRADE setup (the same rule the hourly alert uses), after the Nifty-direction, sector and
+volume filters (filters.py). The result is also shown without the filters, to see what they change. Entry = open of the next candle,
 Stop = wave-4 extreme, Target = target 1. If a candle touches both stop and target, the stop counts first.
 Two exit styles are tested side by side:
   intraday : any open trade is closed at the last candle of the entry day
@@ -17,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 import ew_scan
+import filters
 from ew_scan import IST, best_count
 
 try:
@@ -73,17 +75,36 @@ def net_pct(side, entry, exit_):
 
 # ------------------------------------------------------------------ signals
 def scan_symbol(args):
-    """Walk one symbol through history -> list of new-TRADE signals."""
+    """Walk one symbol through history -> every candle where the raw count is a TRADE setup."""
     name, df = args
-    sigs, prev, n = [], None, len(df)
+    states, n = [], len(df)
     for t in range(WARM, n - 1):
         c = best_count(df.iloc[max(0, t - WINDOW + 1): t + 1])
-        cur = c["side"] if (c and c["valid"] and c["status"] == "TRADE") else None
-        if cur and cur != prev:
-            sigs.append({"name": name, "t": t, "side": cur, "stop": c["stop"], "t1": c["target"],
-                         "score": c["score"], "stop_pct": c["stop_pct"], "rr1": c["rr1"]})
-        prev = cur
-    return name, sigs
+        if c and c["valid"] and c["status"] == "TRADE":
+            states.append({"name": name, "t": t, "side": c["side"], "stop": c["stop"], "t1": c["target"],
+                           "score": c["score"], "stop_pct": c["stop_pct"], "rr1": c["rr1"],
+                           "h1_ago": c["h1_ago"]})
+    return name, states
+
+
+def signals_from_states(data, states, ctx, vols, use_filters=True):
+    """NEW signals: TRADE now, but not TRADE (same side) on the previous candle - after the filters."""
+    sigs = []
+    by = {}
+    for s_ in states:
+        by.setdefault(s_["name"], []).append(s_)
+    for name, lst in by.items():
+        df, last_ok = data[name], None
+        for s_ in sorted(lst, key=lambda x: x["t"]):
+            ok = True
+            if use_filters:
+                nifty, sec = ctx.market_at(name, df.index[s_["t"]])
+                ok = filters.passes_trade(name, s_["side"], s_["h1_ago"], vols[name], s_["t"], nifty, sec)
+            if ok and not (last_ok == (s_["t"] - 1, s_["side"])):
+                sigs.append(s_)
+            if ok:
+                last_ok = (s_["t"], s_["side"])
+    return sigs
 
 
 def trades_from_signals(data, sigs, mode):
@@ -182,12 +203,25 @@ def block(mode, s):
             f"सबसे अच्छा / बुरा: {s['best']:+.2f}% / {s['worst']:+.2f}%\n```")
 
 
+def compare_text(res, base):
+    """Filters on vs off, side by side."""
+    out = ["*फ़िल्टर का असर* (Nifty दिशा + सेक्टर + volume 1.5x)\n```"]
+    for m in ("intraday", "swing"):
+        f, b = res[m], base[m]
+        out.append(f"{LABEL[m].split(' ')[0]}\n"
+                   f" बिना फ़िल्टर : {b['n']:>3} ट्रेड, win {b['win_pct']:.0f}%, ₹{b['final']:,.0f}\n"
+                   f" फ़िल्टर संग  : {f['n']:>3} ट्रेड, win {f['win_pct']:.0f}%, ₹{f['final']:,.0f}")
+    out.append("```")
+    return "\n".join(out)
+
+
 def report_text(res, span, n_sym):
-    head = (f"🧪 *बैक-टेस्ट — Elliott Wave रणनीति*\n{span}, {n_sym} शेयर/इंडेक्स, 1 घंटे की candles\n"
+    head = (f"🧪 *बैक-टेस्ट — Elliott Wave रणनीति (फ़िल्टर के साथ)*\n{span}, {n_sym} शेयर/इंडेक्स, 1 घंटे की candles\n"
             f"पूंजी ₹{START:,.0f}; हर ट्रेड में पूंजी का {SLOT * 100:.0f}%, एक साथ अधिकतम {MAX_OPEN} ट्रेड, "
             f"खर्च {COST:.2f}% प्रति ट्रेड।")
     note = ("_Entry = सिग्नल के बाद वाली candle का open। एक ही candle में stop और target दोनों छुएँ तो stop पहले माना है। "
             "आज के Nifty 100 की सूची पिछले समय पर लगाई है (survivorship bias), इसलिए असली नतीजे कुछ कमज़ोर हो सकते हैं। "
+            "Nifty/सेक्टर की दिशा उस घंटे तक की चाल से ली है (पिछले बंद भाव के मुक़ाबले)। "
             "पिछला प्रदर्शन आगे की गारंटी नहीं। केवल जानकारी, निवेश सलाह नहीं।_")
     return head, [block(m, res[m]) for m in ("intraday", "swing")], note
 
@@ -232,18 +266,23 @@ def run(data, dry=False, csv_path="backtest_trades.csv"):
     except Exception as e:                                   # no multiprocessing: run in one process
         print(f"pool failed ({e!r}); single process", file=sys.stderr)
         scanned = [scan_symbol(x) for x in items]
-    sigs = [s for _, lst in scanned for s in lst]
-    print(f"signals: {len(sigs)}")
-    res, curves, rows = {}, {}, []
+    states = [s for _, lst in scanned for s in lst]
+    ctx = filters.Ctx(data)
+    vols = {n: filters.slot_ratio(df) for n, df in data.items()}
+    sigs = signals_from_states(data, states, ctx, vols, True)
+    raw = signals_from_states(data, states, ctx, vols, False)
+    print(f"signals: {len(sigs)} with filters, {len(raw)} without")
+    res, curves, rows, base = {}, {}, [], {}
     for mode in ("intraday", "swing"):
-        trades = trades_from_signals(data, sigs, mode)
-        taken, curve, skipped = portfolio(trades)
+        taken, curve, skipped = portfolio(trades_from_signals(data, sigs, mode))
         res[mode], curves[mode] = stats(taken, curve, skipped), curve
         rows += taken
+        base[mode] = stats(*portfolio(trades_from_signals(data, raw, mode)))
     first = min(df.index[0] for df in data.values())
     last = max(df.index[-1] for df in data.values())
     span = f"{first:%d %b %Y} से {last:%d %b %Y}"
     head, blocks, note = report_text(res, span, len(data))
+    note = compare_text(res, base) + "\n\n" + note
     if rows:
         pd.DataFrame(rows).drop(columns=["size"], errors="ignore").to_csv(csv_path, index=False)
     if dry:
