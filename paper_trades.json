@@ -1,0 +1,16 @@
+{
+ "since": "2026-10-19",
+ "start": 1000.0,
+ "books": {
+  "intraday": {
+   "equity": 1000.0,
+   "open": [],
+   "closed": []
+  },
+  "swing": {
+   "equity": 1000.0,
+   "open": [],
+   "closed": []
+  }
+ }
+}
