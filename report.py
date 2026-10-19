@@ -13,6 +13,7 @@ from matplotlib.patches import Rectangle
 
 import bot
 import ew_scan
+import filters
 from ew_scan import BG, CFG, GREEN, MUTED, RED, best_count, caption_for, chart_png, fp, tile_color
 from universe import NEXT50, NIFTY50, SECTORS, SECTOR_OF, UNIVERSE
 
@@ -71,17 +72,27 @@ def build_direction(g, rows, idx, source, now):
             f"_स्रोत: {source}। केवल जानकारी, निवेश सलाह नहीं।_")
 
 
-def build_trading(g, rows, vr, cfg, source, now):
+def build_trading(g, rows, vr, cfg, source, now, nifty_chg=None):
     ts = now.strftime("%a %d %b %Y, %H:%M IST")
     movers_n = sum(abs(r["chg"]) >= cfg["min_move_pct"] for r in rows)
-    ideas = bot.build_ideas(rows, vr, dict(cfg, max_ideas=MAX_IDEAS))
+    sec_avg = group_ctx(rows)["sector"]
+    ideas, dropped = [], 0
+    for i in bot.build_ideas(rows, vr, dict(cfg, max_ideas=999)):
+        ok, _ = filters.check("LONG" if i["side"] == "BUY" else "SHORT", nifty_chg, sec_avg.get(SECTOR_OF.get(i["sym"])))
+        if ok:
+            ideas.append(i)
+        else:
+            dropped += 1
+    ideas = ideas[:MAX_IDEAS]
     body = ("\n".join(f"{i['side']:<4} {i['sym']}  {i['chg']:+.2f}%  Vol {i['vol']:.1f}x\n"
                       f" Entry {i['entry']:.2f}  SL {i['sl']:.2f}\n Target {i['target']:.2f}" for i in ideas)
             if ideas else "कोई शेयर शर्तें पूरी नहीं करता")
     vol_known = sum(vr.get(r["sym"]) is not None for r in rows) if vr else 0
     vol_note = "" if vol_known else "\n⚠️ Volume डेटा नहीं मिला, इसलिए कोई सिफ़ारिश नहीं।"
     return (f"{g['emoji']} *{g['title']} — ट्रेड आइडिया* — {ts}\n"
-            f"±{cfg['min_move_pct']:g}% से ऊपर चलने वाले शेयर: {movers_n}\n\n"
+            f"±{cfg['min_move_pct']:g}% से ऊपर चलने वाले शेयर: {movers_n}\n"
+            f"{filters.market_line(nifty_chg)}\n"
+            f"फ़िल्टर (Nifty/सेक्टर के ख़िलाफ़) से हटे: {dropped}\n\n"
             f"✅ चाल ≥ ±{cfg['min_move_pct']:g}% और Volume ≥ {cfg['min_volume_ratio']:g}x\n"
             f"```\n{body}\n```{vol_note}\n"
             f"_Entry = मौजूदा भाव, Target {cfg['target_pct']:g}%, SL {cfg['stop_pct']:g}%। "
@@ -145,23 +156,29 @@ def group_ctx(rows):
     return {"sector": {k: sum(v) / len(v) for k, v in sec.items()}, "chg": {r["sym"]: r["chg"] for r in rows}}
 
 
-def ew_summary(g, results, idx, now, ctx):
+def ew_summary(g, results, idx, now, ctx, nifty_chg=None):
     ts = now.strftime("%a %d %b %Y, %H:%M IST")
-    parts = [f"{g['emoji']} *{g['title']} — Elliott Wave (1h)* — {ts}", index_line(g, idx)]
+    parts = [f"{g['emoji']} *{g['title']} — Elliott Wave (1h)* — {ts}", index_line(g, idx),
+             f"{filters.market_line(nifty_chg)}; breakout पर Volume ≥ {filters.VOL_MIN:g}x"]
     nc = results.get(g["idx_name"])
     if nc and nc["valid"]:
         parts.append(f"इंडेक्स: {nc['side']} setup ({nc['status']}) — Entry {fp(nc['entry'])}, "
                      f"SL {fp(nc['stop'])}, Target {fp(nc['target'])}")
     else:
         parts.append("इंडेक्स: कोई वैध entry गिनती नहीं")
+    blocked = sum(1 for k, v in results.items() if v and v.get("blocked"))
     stocks = {k: v for k, v in results.items() if k != g["idx_name"] and v and v["valid"]}
     for status, title in (("TRADE", "✅ *TRADE* (गिनती ठीक + H1 breakout)"),
-                          ("WATCH", "👀 *WATCH* (गिनती ठीक, H1 breakout अभी नहीं)")):
+                          ("WATCH", "👀 *WATCH* (गिनती ठीक; H1 breakout या volume 1.5x अभी नहीं)")):
         lst = [(k, v) for k, v in stocks.items() if v["status"] == status]
         if lst:
             more = f"\n… और {len(lst) - CFG['max_list']}" if len(lst) > CFG["max_list"] else ""
             parts.append(title + f" — {len(lst)}\n```\n"
-                         + "\n".join(ew_scan.row(k, v, ctx) for k, v in lst[: CFG["max_list"]]) + more + "\n```")
+                         + "\n".join(ew_scan.row(k, v, ctx) + "\n " + filters.vol_text(k, v)
+                                    + (f"\n ⚠ {v['demoted']}" if v.get("demoted") else "")
+                                    for k, v in lst[: CFG["max_list"]]) + more + "\n```")
+    if blocked:
+        parts.append(f"🚫 Nifty/सेक्टर के ख़िलाफ़ होने से हटे सेटअप: {blocked}")
     if not stocks:
         parts.append("शेयरों में कोई वैध Elliott setup नहीं मिला।")
     parts.append(ew_scan.FOOTER)
@@ -225,7 +242,14 @@ def main():
         print(f"market data failed: {e!r}", file=sys.stderr)
         rows = None
 
-    data = results = None
+    nifty_chg = None                     # market direction = Nifty 50 (for both blocks)
+    if index:
+        nifty_chg = index["chg"]
+    elif rows:
+        n50 = [r["chg"] for r in rows if r["sym"] in set(NIFTY50)]
+        nifty_chg = sum(n50) / len(n50) if n50 else None
+
+    data = results = vols = None
     try:
         if yf is None:
             raise RuntimeError("yfinance not installed")
@@ -233,6 +257,7 @@ def main():
         if len(data) < 40:
             raise RuntimeError(f"only {len(data)} symbols loaded")
         results = {n: best_count(df) for n, df in data.items()}
+        vols = {n: filters.slot_ratio(df) for n, df in data.items()}
     except BaseException as e:
         print(f"Elliott data failed: {e!r}", file=sys.stderr)
 
@@ -246,17 +271,22 @@ def main():
                           f"{g['emoji']} {g['title']} सेक्टर हीट मैप — स्रोत: {source}", dry,
                           "heatmap_" + g["title"].replace(" ", "_"))
                 out_text(build_direction(g, grows, idx, source, now), dry)
-                out_text(build_trading(g, grows, vr, cfg, source, now), dry)
+                out_text(build_trading(g, grows, vr, cfg, source, now, nifty_chg), dry)
             except BaseException as e:
                 print(f"{g['title']} market block failed: {e!r}", file=sys.stderr)
         if results:
             try:
-                gres = {k: v for k, v in results.items() if k in gs or k == g["idx_name"]}
-                summary, stocks = ew_summary(g, gres, idx, now, group_ctx(grows) if grows else None)
+                gctx = group_ctx(grows) if grows else None
+                gres = {}
+                for k, v in results.items():
+                    if k in gs or k == g["idx_name"]:
+                        sec = gctx["sector"].get(SECTOR_OF.get(k)) if gctx else None
+                        gres[k] = filters.judge(k, v, vols[k], len(data[k]) - 1, nifty_chg, sec)
+                summary, stocks = ew_summary(g, gres, idx, now, gctx, nifty_chg)
                 out_text(summary, dry)
                 for nm in chart_names_for(g, gres, stocks):
                     c = gres[nm]
-                    cap = (caption_for(nm, c, group_ctx(grows) if grows else None) if c["valid"]
+                    cap = (filters.caption(nm, c, gctx) if c["valid"]
                            else f"📊 {nm} — {c['side']} गिनती: अभी entry नहीं।\nकारण: {c['fails'][0] if c['fails'] else '-'}")
                     out_photo(chart_png(nm, data[nm], c, now), cap, dry, "ew_" + nm.replace(" ", "_").replace("&", "n"))
             except BaseException as e:
