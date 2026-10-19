@@ -7,8 +7,9 @@ import os, sys
 from datetime import datetime
 
 import ew_scan as ew
+import filters
 import paper
-from ew_scan import CFG, IST, best_count, caption_for, chart_png, send_photo, send_text
+from ew_scan import CFG, IST, best_count, chart_png, send_photo, send_text
 from report import load_ew
 from universe import NEXT50
 
@@ -17,14 +18,21 @@ def grp(name):
     return "Nifty Next 50" if name in NEXT50 or name == "NIFTY NEXT 50" else "Nifty 50"
 
 
-def new_trades(data, results):
-    """Names whose TRADE setup is NEW this hour: TRADE now, but not TRADE (same side) one candle ago.
-    This needs no saved state, so the same setup is never alerted twice."""
+def judged(name, df, c, pos, ctx, vols):
+    """Wave count c as seen at candle `pos`, after the volume / Nifty / sector filters."""
+    nifty, sec = ctx.market_at(name, df.index[pos])
+    return filters.judge(name, c, vols[name], pos, nifty, sec)
+
+
+def new_trades(data, results, ctx, vols):
+    """Names whose TRADE setup is NEW this hour: TRADE now (after the filters), but not TRADE
+    (same side, after the filters) one candle ago. Needs no saved state, so a setup is never alerted twice."""
     out = []
     for name, c in results.items():
         if not (c and c["valid"] and c["status"] == "TRADE"):
             continue
-        prev = best_count(data[name].iloc[:-1])
+        df = data[name]
+        prev = judged(name, df, best_count(df.iloc[:-1]), len(df) - 2, ctx, vols)
         if prev and prev["valid"] and prev["status"] == "TRADE" and prev["side"] == c["side"]:
             continue
         out.append(name)
@@ -32,16 +40,17 @@ def new_trades(data, results):
     return out
 
 
-def alert_run(data, results, now, dry=False):
+def alert_run(data, results, now, ctx, vols, dry=False):
     """Hourly intraday mode: message only when a brand-new TRADE setup appears. Returns the names."""
-    names = new_trades(data, results)
+    names = new_trades(data, results, ctx, vols)
     print(f"new TRADE setups: {names}")
     if not names:
         return names
+    nifty = ctx.market_at("NIFTY 50", data["NIFTY 50"].index[-1])[0] if "NIFTY 50" in data else None
     head = (f"🚨 *नया TRADE setup* — {now.strftime('%H:%M IST')}\n"
             + "\n".join(f"{'📈' if results[k]['side'] == 'LONG' else '📉'} {k} {results[k]['side']} ({grp(k)})"
                         for k in names)
-            + "\n_केवल जानकारी, निवेश सलाह नहीं।_")
+            + f"\n_{filters.market_line(nifty)}; Volume ≥ {filters.VOL_MIN:g}x। केवल जानकारी, निवेश सलाह नहीं।_")
     if dry:
         os.makedirs("out", exist_ok=True)
         print(head)
@@ -53,7 +62,7 @@ def alert_run(data, results, now, dry=False):
         if dry:
             open(f"out/alert_{nm.replace(' ', '_').replace('&', 'n')}.png", "wb").write(png)
         else:
-            send_photo(png, caption_for(nm, c).replace(" — ", f" [{grp(nm)}] — ", 1))
+            send_photo(png, filters.caption(nm, c).replace(" — ", f" [{grp(nm)}] — ", 1))
     return names
 
 
@@ -86,9 +95,11 @@ def main():
     data = load_ew(now)
     if len(data) < 40:
         sys.exit(f"Only {len(data)} symbols loaded; aborting.")
-    results = {name: best_count(df) for name, df in data.items()}
+    ctx = filters.Ctx(data)
+    vols = {name: filters.slot_ratio(df) for name, df in data.items()}
+    results = {name: judged(name, df, best_count(df), len(df) - 1, ctx, vols) for name, df in data.items()}
     dry = "--dry" in sys.argv
-    names = alert_run(data, results, now, dry=dry)
+    names = alert_run(data, results, now, ctx, vols, dry=dry)
     paper_run(data, results, names, now, dry=dry)
 
 
