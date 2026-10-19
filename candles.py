@@ -1,7 +1,7 @@
 """Hourly candles for the Elliott scan and the back-test.
 Angel One SmartAPI first; Yahoo Finance is the backup (per symbol, so one missing
 symbol never stops the run).
-    load(tick, days, min_len, now) -> {name: DataFrame[Open, High, Low, Close]}
+    load(tick, days, min_len, now) -> {name: DataFrame[Open, High, Low, Close, Volume]}
     tick = {name: yahoo ticker}, e.g. {"RELIANCE": "RELIANCE.NS", "NIFTY 50": "^NSEI"}
 """
 import sys
@@ -71,7 +71,9 @@ def _angel_one(api, token, days, now):
             idx = idx.tz_localize(IST) if idx.tz is None else idx.tz_convert(IST)
             frames.append(pd.DataFrame(
                 {"Open": [float(r[1]) for r in rows], "High": [float(r[2]) for r in rows],
-                 "Low": [float(r[3]) for r in rows], "Close": [float(r[4]) for r in rows]}, index=idx))
+                 "Low": [float(r[3]) for r in rows], "Close": [float(r[4]) for r in rows],
+                 "Volume": [float(r[5]) if len(r) > 5 and r[5] is not None else float("nan") for r in rows]},
+                index=idx))
         end, left = start - timedelta(minutes=1), left - span
         time.sleep(PAUSE)
     if not frames:
@@ -111,7 +113,8 @@ def _from_yahoo(tick, days):
                 d = data[t]
             except KeyError:
                 d = data                                  # single-ticker download: flat columns
-            df = d[["Open", "High", "Low", "Close"]].dropna().copy()
+            cols = ["Open", "High", "Low", "Close"] + (["Volume"] if "Volume" in d.columns else [])
+            df = d[cols].dropna(subset=["Open", "High", "Low", "Close"]).copy()
             df.index = df.index.tz_convert(IST) if df.index.tz is not None else df.index.tz_localize(IST)
             out[name] = df
         except Exception as e:
@@ -121,7 +124,8 @@ def _from_yahoo(tick, days):
 
 # ---------------------------------------------------------------------- main
 def _clean(df, min_len, now):
-    df = df[["Open", "High", "Low", "Close"]].dropna()
+    cols = ["Open", "High", "Low", "Close"] + (["Volume"] if "Volume" in df.columns else [])
+    df = df[cols].dropna(subset=["Open", "High", "Low", "Close"])
     if len(df) and df.index[-1] + timedelta(hours=1) > now:
         df = df.iloc[:-1]                                  # candle still forming
     return df if len(df) >= min_len else None
