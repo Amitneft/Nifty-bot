@@ -13,6 +13,7 @@ from matplotlib.patches import Rectangle
 
 import bot
 import ew_scan
+import fastquotes
 import filters
 from ew_scan import BG, CFG, GREEN, MUTED, RED, best_count, caption_for, chart_png, fp, tile_color
 from universe import NEXT50, NIFTY50, SECTORS, SECTOR_OF, UNIVERSE
@@ -72,9 +73,8 @@ def build_direction(g, rows, idx, source, now):
             f"_स्रोत: {source}। केवल जानकारी, निवेश सलाह नहीं।_")
 
 
-def build_trading(g, rows, vr, cfg, source, now, nifty_chg=None):
-    ts = now.strftime("%a %d %b %Y, %H:%M IST")
-    movers_n = sum(abs(r["chg"]) >= cfg["min_move_pct"] for r in rows)
+def select_ideas(rows, vr, cfg, nifty_chg):
+    """Top gainer / loser ideas (move + volume) that also agree with Nifty 50 and with their sector."""
     sec_avg = group_ctx(rows)["sector"]
     ideas, dropped = [], 0
     for i in bot.build_ideas(rows, vr, dict(cfg, max_ideas=999)):
@@ -83,14 +83,20 @@ def build_trading(g, rows, vr, cfg, source, now, nifty_chg=None):
             ideas.append(i)
         else:
             dropped += 1
-    ideas = ideas[:MAX_IDEAS]
+    return ideas[:MAX_IDEAS], dropped
+
+
+def build_trading(g, rows, vr, cfg, source, now, nifty_chg=None):
+    ts = now.strftime("%a %d %b %Y, %H:%M IST")
+    mv = [r for r in rows if abs(r["chg"]) >= cfg["min_move_pct"]]
+    ideas, dropped = select_ideas(rows, vr, cfg, nifty_chg)
     body = ("\n".join(f"{i['side']:<4} {i['sym']}  {i['chg']:+.2f}%  Vol {i['vol']:.1f}x\n"
                       f" Entry {i['entry']:.2f}  SL {i['sl']:.2f}\n Target {i['target']:.2f}" for i in ideas)
             if ideas else "कोई शेयर शर्तें पूरी नहीं करता")
-    vol_known = sum(vr.get(r["sym"]) is not None for r in rows) if vr else 0
-    vol_note = "" if vol_known else "\n⚠️ Volume डेटा नहीं मिला, इसलिए कोई सिफ़ारिश नहीं।"
+    vol_known = sum(vr.get(r["sym"]) is not None for r in mv) if vr else 0
+    vol_note = "" if (not mv or vol_known) else "\n⚠️ Volume डेटा नहीं मिला, इसलिए कोई सिफ़ारिश नहीं।"
     return (f"{g['emoji']} *{g['title']} — ट्रेड आइडिया* — {ts}\n"
-            f"±{cfg['min_move_pct']:g}% से ऊपर चलने वाले शेयर: {movers_n}\n"
+            f"±{cfg['min_move_pct']:g}% से ऊपर चलने वाले शेयर: {len(mv)}\n"
             f"{filters.market_line(nifty_chg)}\n"
             f"फ़िल्टर (Nifty/सेक्टर के ख़िलाफ़) से हटे: {dropped}\n\n"
             f"✅ चाल ≥ ±{cfg['min_move_pct']:g}% और Volume ≥ {cfg['min_volume_ratio']:g}x\n"
@@ -98,6 +104,22 @@ def build_trading(g, rows, vr, cfg, source, now, nifty_chg=None):
             f"_Entry = मौजूदा भाव, Target {cfg['target_pct']:g}%, SL {cfg['stop_pct']:g}%। "
             f"Vol = अब तक का volume ÷ पिछले दिनों का उसी समय तक का औसत। "
             f"शुरुआती मिनटों में चाल अस्थिर होती है। स्रोत: {source}। केवल जानकारी, निवेश सलाह नहीं।_")
+
+
+def paper_open_A(ideas, now, dry):
+    """Take today's top gainer / loser ideas on paper (Rs 1000 each, intraday and swing book)."""
+    try:
+        import paper
+        st = paper.load(now)
+        sigs = [{"strat": "A", "name": i["sym"], "side": "LONG" if i["side"] == "BUY" else "SHORT",
+                 "entry": float(i["entry"]), "stop": float(i["sl"]), "t1": float(i["target"]),
+                 "t2": float(i["target"]), "sig_time": now.isoformat()} for i in ideas]
+        lines = paper.open_new(st, sigs, now)
+        if lines and not dry:
+            paper.save(st)
+        print(f"paper trades opened (A): {len(lines) // 2}")
+    except Exception as e:
+        print(f"paper trading (A) failed: {e!r}", file=sys.stderr)
 
 
 def heatmap_png(g, rows, idx, source, now):
@@ -229,13 +251,16 @@ def main():
         cfg.update(json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "criteria.json"))))
     except Exception as e:
         print(f"criteria.json not read ({e}); using defaults", file=sys.stderr)
+    bot.fetch_angel = lambda n: fastquotes.fetch(n, cfg["min_move_pct"])   # volume check only for the movers
 
+    # ================= PHASE 1: live prices + top gainers / losers + volume ideas (goes out first)
     rows = vr = index = source = None
     try:
         rows, index, source, vr = bot.fetch_all(now)
         if len(rows) < 40:
             raise RuntimeError(f"only {len(rows)} quotes fetched")
-        if vr is None or sum(v is not None for v in vr.values()) < 25:
+        mv = [r["sym"] for r in rows if abs(r["chg"]) >= cfg["min_move_pct"]]
+        if vr is None or (mv and not any(vr.get(s) is not None for s in mv)):
             vr = bot.fetch_volume_ratios(now.date())
         print(f"quotes: {len(rows)}")
     except BaseException as e:
@@ -249,6 +274,31 @@ def main():
         n50 = [r["chg"] for r in rows if r["sym"] in set(NIFTY50)]
         nifty_chg = sum(n50) / len(n50) if n50 else None
 
+    blocks, all_ideas = [], []
+    for g in GROUPS:
+        gs = set(g["syms"])
+        grows = [r for r in rows if r["sym"] in gs] if rows else []
+        idx = index if g["title"] == "Nifty 50" else (next50_index(grows) if rows else None)
+        blocks.append((g, gs, grows, idx))
+        if grows:
+            try:
+                out_text(build_direction(g, grows, idx, source, now), dry)
+                out_text(build_trading(g, grows, vr, cfg, source, now, nifty_chg), dry)
+                all_ideas += select_ideas(grows, vr or {}, cfg, nifty_chg)[0]
+            except BaseException as e:
+                print(f"{g['title']} market block failed: {e!r}", file=sys.stderr)
+    if all_ideas:
+        paper_open_A(all_ideas, now, dry)
+    for g, gs, grows, idx in blocks:
+        if grows:
+            try:
+                out_photo(heatmap_png(g, grows, idx, source, now),
+                          f"{g['emoji']} {g['title']} सेक्टर हीट मैप — स्रोत: {source}", dry,
+                          "heatmap_" + g["title"].replace(" ", "_"))
+            except BaseException as e:
+                print(f"{g['title']} heat map failed: {e!r}", file=sys.stderr)
+
+    # ================= PHASE 2: Elliott Wave (slower: 100 stocks of hourly candles)
     data = results = vols = None
     try:
         if yf is None:
@@ -261,19 +311,7 @@ def main():
     except BaseException as e:
         print(f"Elliott data failed: {e!r}", file=sys.stderr)
 
-    for g in GROUPS:
-        gs = set(g["syms"])
-        grows = [r for r in rows if r["sym"] in gs] if rows else []
-        idx = index if g["title"] == "Nifty 50" else (next50_index(grows) if rows else None)
-        if grows:
-            try:
-                out_photo(heatmap_png(g, grows, idx, source, now),
-                          f"{g['emoji']} {g['title']} सेक्टर हीट मैप — स्रोत: {source}", dry,
-                          "heatmap_" + g["title"].replace(" ", "_"))
-                out_text(build_direction(g, grows, idx, source, now), dry)
-                out_text(build_trading(g, grows, vr, cfg, source, now, nifty_chg), dry)
-            except BaseException as e:
-                print(f"{g['title']} market block failed: {e!r}", file=sys.stderr)
+    for g, gs, grows, idx in blocks:
         if results:
             try:
                 gctx = group_ctx(grows) if grows else None
