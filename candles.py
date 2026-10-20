@@ -1,7 +1,7 @@
-"""Hourly candles for the Elliott scan and the back-test.
+"""Candles (1-hour or 5-minute) for the Elliott scan, the back-test and the paper trades.
 Angel One SmartAPI first; Yahoo Finance is the backup (per symbol, so one missing
 symbol never stops the run).
-    load(tick, days, min_len, now) -> {name: DataFrame[Open, High, Low, Close, Volume]}
+    load(tick, days, min_len, now, interval="1h") -> {name: DataFrame[Open, High, Low, Close, Volume]}
     tick = {name: yahoo ticker}, e.g. {"RELIANCE": "RELIANCE.NS", "NIFTY 50": "^NSEI"}
 """
 import sys
@@ -17,7 +17,8 @@ except Exception:  # pragma: no cover
 
 IST = timezone(timedelta(hours=5, minutes=30))
 INDEX_TOKENS = {"^NSEI": "99926000"}     # Nifty 50 index; other indices come from Yahoo
-CHUNK_DAYS = 360                         # Angel allows up to 400 days of 1h candles per request
+# interval -> (Angel name, days per Angel request, minutes per candle, Yahoo interval, Yahoo max days)
+INTERVALS = {"1h": ("ONE_HOUR", 360, 60, "1h", 729), "5m": ("FIVE_MINUTE", 95, 5, "5m", 59)}
 PAUSE = 0.4                              # stay under Angel's historical-data rate limit
 
 
@@ -47,8 +48,8 @@ def _tokens(symbols):
             if d.get("exch_seg") == "NSE" and d.get("symbol") in want}
 
 
-def _candle_call(api, token, start, end):
-    p = {"exchange": "NSE", "symboltoken": token, "interval": "ONE_HOUR",
+def _candle_call(api, token, start, end, interval):
+    p = {"exchange": "NSE", "symboltoken": token, "interval": INTERVALS[interval][0],
          "fromdate": start.strftime("%Y-%m-%d 09:15"), "todate": end.strftime("%Y-%m-%d %H:%M")}
     for attempt in (1, 2):
         try:
@@ -60,12 +61,12 @@ def _candle_call(api, token, start, end):
             time.sleep(1.5)
 
 
-def _angel_one(api, token, days, now):
+def _angel_one(api, token, days, now, interval):
     frames, end, left = [], now, days
     while left > 0:
-        span = min(CHUNK_DAYS, left)
+        span = min(INTERVALS[interval][1], left)
         start = end - timedelta(days=span)
-        rows = _candle_call(api, token, start, end)
+        rows = _candle_call(api, token, start, end, interval)
         if rows:
             idx = pd.to_datetime([r[0] for r in rows])
             idx = idx.tz_localize(IST) if idx.tz is None else idx.tz_convert(IST)
@@ -82,7 +83,7 @@ def _angel_one(api, token, days, now):
     return df[~df.index.duplicated()].sort_index()
 
 
-def _from_angel(tick, days, now):
+def _from_angel(tick, days, now, interval):
     api = _login()
     syms = [t[:-3] for t in tick.values() if t.endswith(".NS")]
     toks = _tokens(syms)
@@ -92,7 +93,7 @@ def _from_angel(tick, days, now):
         if not token:
             continue
         try:
-            df = _angel_one(api, token, days, now)
+            df = _angel_one(api, token, days, now, interval)
             if df is not None:
                 out[name] = df
         except Exception as e:
@@ -101,10 +102,11 @@ def _from_angel(tick, days, now):
 
 
 # --------------------------------------------------------------------- Yahoo
-def _from_yahoo(tick, days):
+def _from_yahoo(tick, days, interval):
     if yf is None or not tick:
         return {}
-    data = yf.download(list(tick.values()), period=f"{days}d", interval="1h", group_by="ticker",
+    yint, ymax = INTERVALS[interval][3], INTERVALS[interval][4]
+    data = yf.download(list(tick.values()), period=f"{min(days, ymax)}d", interval=yint, group_by="ticker",
                        progress=False, threads=True, auto_adjust=False)
     out = {}
     for name, t in tick.items():
@@ -123,19 +125,20 @@ def _from_yahoo(tick, days):
 
 
 # ---------------------------------------------------------------------- main
-def _clean(df, min_len, now):
+def _clean(df, min_len, now, minutes=60):
     cols = ["Open", "High", "Low", "Close"] + (["Volume"] if "Volume" in df.columns else [])
     df = df[cols].dropna(subset=["Open", "High", "Low", "Close"])
-    if len(df) and df.index[-1] + timedelta(hours=1) > now:
+    if len(df) and df.index[-1] + timedelta(minutes=minutes) > now:
         df = df.iloc[:-1]                                  # candle still forming
     return df if len(df) >= min_len else None
 
 
-def load(tick, days, min_len, now):
+def load(tick, days, min_len, now, interval="1h"):
+    minutes = INTERVALS[interval][2]
     out, n_angel = {}, 0
     try:
-        for name, df in _from_angel(tick, days, now).items():
-            df = _clean(df, min_len, now)
+        for name, df in _from_angel(tick, days, now, interval).items():
+            df = _clean(df, min_len, now, minutes)
             if df is not None:
                 out[name] = df
         n_angel = len(out)
@@ -143,10 +146,10 @@ def load(tick, days, min_len, now):
         print(f"Angel One candles failed: {e}; using Yahoo Finance", file=sys.stderr)
     missing = {n: t for n, t in tick.items() if n not in out}
     if missing:
-        for name, df in _from_yahoo(missing, days).items():
-            df = _clean(df, min_len, now)
+        for name, df in _from_yahoo(missing, days, interval).items():
+            df = _clean(df, min_len, now, minutes)
             if df is not None:
                 out[name] = df
-    print(f"candles: Angel One {n_angel}, Yahoo Finance {len(out) - n_angel}, "
+    print(f"candles {interval}: Angel One {n_angel}, Yahoo Finance {len(out) - n_angel}, "
           f"missing {len(tick) - len(out)}")
     return out
