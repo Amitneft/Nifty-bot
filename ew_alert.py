@@ -1,6 +1,6 @@
 """Hourly intraday alert: message only when a brand-new Elliott TRADE setup appears
 (Nifty 50 / Nifty Next 50 index or any of their stocks). Also runs the paper-trading book:
-every alert is taken on paper (Rs 1000) and followed to stop / target.
+every alert is taken on paper (Rs 1000 per trade) and followed to stop / target.
 Run at ~:20 past each hour, 10:20-15:20 IST:   python ew_alert.py [--dry] [--force]
 """
 import os, sys
@@ -67,11 +67,17 @@ def alert_run(data, results, now, ctx, vols, dry=False):
 
 
 def paper_run(data, results, names, now, dry=False):
-    """Settle open paper trades, open the new ones, report. Never stops the alert on error."""
+    """Settle open paper trades (A on 5-minute candles, B on 1-hour candles), open the new B trades, report.
+    Never stops the alert on error."""
     try:
         st = paper.load(now)
-        lines = paper.settle(st, data, now)
-        sigs = [{"name": n, "side": results[n]["side"], "entry": float(results[n]["entry"]),
+        five = {}
+        a_open = paper.open_names(st, "A")
+        if a_open:
+            import candles
+            five = candles.load({n: n + ".NS" for n in a_open}, 7, 2, now, interval="5m")
+        lines = paper.settle(st, data, five, now)
+        sigs = [{"strat": "B", "name": n, "side": results[n]["side"], "entry": float(results[n]["entry"]),
                  "stop": float(results[n]["stop"]), "t1": float(results[n]["target"]),
                  "t2": float(results[n]["target2"]), "sig_time": str(data[n].index[-1])} for n in names]
         lines += paper.open_new(st, sigs, now)
@@ -105,3 +111,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
