@@ -1,16 +1,20 @@
-"""Back-test of the Elliott Wave strategy (same rules as the live scanner) on 1h candles.
+"""Back-test of BOTH strategies, each in two styles (intraday / swing), every trade = Rs 1000.
 
-Walk-forward: at every completed candle the wave counter sees only the past, exactly like the live bot.
-A signal = a NEW TRADE setup (the same rule the hourly alert uses), after the Nifty-direction, sector and
-volume filters (filters.py). The result is also shown without the filters, to see what they change. Entry = open of the next candle,
-Stop = wave-4 extreme, Target = target 1. If a candle touches both stop and target, the stop counts first.
-Two exit styles are tested side by side:
-  intraday : any open trade is closed at the last candle of the entry day
-  swing    : held until stop / target, at most SWING_MAX candles (~5 trading days)
-Capital: Rs 1000, each trade uses 20% of the current capital, max 5 trades open at once, costs 0.10% per trade.
-Run:  python backtest.py [--days 365] [--dry]
+ A : Top gainer / loser - stock already moved >= 1% today AND volume >= 1.5x the normal for that time,
+     in the direction of Nifty 50 and of its sector (filters.py). Target 1%, stop 0.5%.
+     5-minute candles; the decision is taken when the first candle (9:15-9:20) closes; at most 8 ideas
+     per day and per block (Nifty 50 / Next 50), like the live report.
+ B : Elliott Wave (1h candles). A signal = a NEW TRADE setup (same rule as the hourly alert) after the
+     Nifty-direction, sector and volume filters. Entry = open of the next candle, stop = wave-4 extreme,
+     target = target 1.
+If one candle touches both stop and target, the stop counts first.
+ intraday : an open trade is closed at the last candle of the entry day
+ swing    : held until stop / target, at most 5 trading days
+Every trade is independent and uses Rs 1000 (so no compounding); costs 0.10% per trade.
+The result is also shown without the filters, to see what they change.
+Run:  python backtest.py [--days 365] [--dry]     (--days = history for strategy B)
 """
-import os, sys
+import json, os, sys
 from datetime import datetime, timedelta
 from multiprocessing import Pool
 
@@ -27,18 +31,31 @@ except ImportError:
     yf = None
 from universe import NEXT50, UNIVERSE
 
-WINDOW = 300        # candles of history shown to the wave counter at each step
-WARM = 120          # first candle that is evaluated
+WINDOW = 300        # candles of history shown to the wave counter at each step (B)
+WARM = 120          # first candle that is evaluated (B)
 COST = 0.10         # round-trip cost in % (brokerage + taxes + slippage)
-SLOT = 0.20         # share of capital used per trade
-MAX_OPEN = 5        # trades open at the same time
-START = 1000.0      # starting capital (Rs)
-SWING_MAX = 35      # candles (about 5 trading days)
+PER_TRADE = 1000.0  # Rs invested in every trade
+SWING_MAX = 35      # swing = 5 trading days = 35 hourly candles
+A_SWING_MAX = 375   # ... = 375 five-minute candles
+A_DAYS = 90         # history for strategy A (Angel keeps ~100 days of 5-minute candles)
+A_MAX_IDEAS = 8     # ideas per day and per block, like the live report
 INDEX_TICKS = {"NIFTY 50": "^NSEI", "NIFTY NEXT 50": "^NSMIDCP"}
+STRAT = {"A": "A: टॉप गेनर/लूज़र + volume", "B": "B: Elliott Wave"}
+LABEL = {"intraday": "इंट्राडे (उसी दिन बंद)", "swing": "स्विंग (अधिकतम 5 दिन)"}
+CRITERIA = {"min_move_pct": 1.0, "min_volume_ratio": 1.5, "target_pct": 1.0, "stop_pct": 0.5}
+
+
+def load_criteria():
+    cfg = dict(CRITERIA)
+    try:
+        cfg.update(json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "criteria.json"))))
+    except Exception:
+        pass
+    return cfg
 
 
 # ------------------------------------------------------------------ trade engine
-def run_trade(idx, O, H, L, C, i0, entry, side, stop, t1, mode, day0, gap_first, final):
+def run_trade(idx, O, H, L, C, i0, entry, side, stop, t1, mode, day0, gap_first, final, max_candles=SWING_MAX):
     """Walk candles from i0. Returns dict(exit, why, j) or None if still open (final=False)."""
     n, long_ = len(C), side == "LONG"
     for j in range(i0, n):
@@ -61,7 +78,7 @@ def run_trade(idx, O, H, L, C, i0, entry, side, stop, t1, mode, day0, gap_first,
         if mode == "intraday":
             if (j + 1 < n and idx[j + 1].date() != idx[j].date()) or idx[j].date() != day0:
                 return {"exit": c, "why": "TIME", "j": j}
-        elif j - i0 + 1 >= SWING_MAX:
+        elif j - i0 + 1 >= max_candles:
             return {"exit": c, "why": "TIME", "j": j}
     if final:
         return {"exit": C[n - 1], "why": "TIME", "j": n - 1}
@@ -73,7 +90,7 @@ def net_pct(side, entry, exit_):
     return g - COST
 
 
-# ------------------------------------------------------------------ signals
+# ------------------------------------------------------------------ strategy B: Elliott
 def scan_symbol(args):
     """Walk one symbol through history -> every candle where the raw count is a TRADE setup."""
     name, df = args
@@ -89,8 +106,7 @@ def scan_symbol(args):
 
 def signals_from_states(data, states, ctx, vols, use_filters=True):
     """NEW signals: TRADE now, but not TRADE (same side) on the previous candle - after the filters."""
-    sigs = []
-    by = {}
+    sigs, by = [], {}
     for s_ in states:
         by.setdefault(s_["name"], []).append(s_)
     for name, lst in by.items():
@@ -107,7 +123,7 @@ def signals_from_states(data, states, ctx, vols, use_filters=True):
     return sigs
 
 
-def trades_from_signals(data, sigs, mode):
+def trades_B(data, sigs, mode):
     out = []
     for s in sigs:
         df = data[s["name"]]
@@ -119,126 +135,182 @@ def trades_from_signals(data, sigs, mode):
             continue                                   # opened beyond stop / target: no trade
         r = run_trade(idx, O, H, L, C, i0, entry, s["side"], s["stop"], s["t1"], mode,
                       idx[i0].date(), gap_first=False, final=True)
-        out.append({"name": s["name"], "side": s["side"], "score": s["score"], "mode": mode,
+        out.append({"strat": "B", "name": s["name"], "side": s["side"], "mode": mode,
                     "entry_time": idx[i0], "exit_time": idx[r["j"]] + timedelta(hours=1),
                     "entry": entry, "exit": r["exit"], "why": r["why"],
                     "net": net_pct(s["side"], entry, r["exit"]), "candles": r["j"] - i0 + 1})
     return out
 
 
-# ------------------------------------------------------------------ capital simulation
-def portfolio(trades):
-    """Rs 1000 compounding: 20% of capital per trade, max 5 open, one per symbol."""
-    eq, open_, taken, curve, skipped = START, [], [], [(None, START)], 0
-    trades = sorted(trades, key=lambda x: (x["entry_time"], -x["score"]))
-
-    def close_until(t):
-        nonlocal eq
-        for p in sorted([p for p in open_ if t is None or p["exit_time"] <= t], key=lambda p: p["exit_time"]):
-            open_.remove(p)
-            eq += p["size"] * p["net"] / 100
-            p["pnl"] = p["size"] * p["net"] / 100
-            curve.append((p["exit_time"], eq))
-
-    for tr in trades:
-        close_until(tr["entry_time"])
-        if len(open_) >= MAX_OPEN or any(p["name"] == tr["name"] for p in open_):
-            skipped += 1
+# ------------------------------------------------------------------ strategy A: top gainer / loser + volume
+def scan_movers(data5, cfg, ctx, vols, use_filters=True):
+    """Ideas of every day: move >= min_move%, volume >= min_volume_ratio x, (Nifty + sector filters),
+    measured when the first 5-minute candle (9:15-9:20) has closed."""
+    sigs = []
+    for name, df in data5.items():
+        if name in filters.INDEXES:
             continue
-        p = dict(tr, size=eq * SLOT)
-        open_.append(p)
-        taken.append(p)
-    close_until(None)
-    return taken, curve, skipped
+        slot = np.array(df.index.strftime("%H:%M"))
+        chg_s = ctx.tbl[name].reindex(df.index).to_numpy()
+        vr = vols[name].to_numpy()
+        C = df["Close"].to_numpy()
+        for p in np.where(slot == "09:15")[0]:
+            if p + 1 >= len(df):
+                continue
+            chg, v = chg_s[p], vr[p]
+            if np.isnan(chg) or np.isnan(v) or abs(chg) < cfg["min_move_pct"] or v < cfg["min_volume_ratio"]:
+                continue
+            side = "LONG" if chg > 0 else "SHORT"
+            if use_filters:
+                nifty, sec = ctx.market_at(name, df.index[p])
+                if not filters.check(side, nifty, sec)[0]:
+                    continue
+            e, tp, sp = C[p], cfg["target_pct"] / 100, cfg["stop_pct"] / 100
+            sigs.append({"name": name, "t": int(p), "day": df.index[p].date(), "side": side, "chg": float(chg),
+                         "block": name in NEXT50, "entry": float(e),
+                         "t1": float(e * (1 + tp) if side == "LONG" else e * (1 - tp)),
+                         "stop": float(e * (1 - sp) if side == "LONG" else e * (1 + sp))})
+    best = {}
+    for s in sigs:                                       # at most A_MAX_IDEAS per day and block, biggest move first
+        best.setdefault((s["day"], s["block"]), []).append(s)
+    out = []
+    for lst in best.values():
+        out += sorted(lst, key=lambda x: -abs(x["chg"]))[:A_MAX_IDEAS]
+    return out
 
 
-def stats(taken, curve, skipped):
-    n = len(taken)
-    wins = [t for t in taken if t["net"] > 0]
-    loss = [t for t in taken if t["net"] <= 0]
-    gw, gl = sum(t["pnl"] for t in wins), -sum(t["pnl"] for t in loss)
-    eqs = np.array([e for _, e in curve])
-    dd = float(((eqs - np.maximum.accumulate(eqs)) / np.maximum.accumulate(eqs)).min() * 100) if len(eqs) else 0.0
-    final = float(eqs[-1]) if len(eqs) else START
-    by = lambda f: [t for t in taken if f(t)]
+def trades_A(data5, sigs, mode):
+    out = []
+    for s in sigs:
+        df = data5[s["name"]]
+        idx, O, H, L, C = df.index, df.Open.values, df.High.values, df.Low.values, df.Close.values
+        i0 = s["t"] + 1
+        r = run_trade(idx, O, H, L, C, i0, s["entry"], s["side"], s["stop"], s["t1"], mode,
+                      idx[s["t"]].date(), gap_first=False, final=True, max_candles=A_SWING_MAX)
+        out.append({"strat": "A", "name": s["name"], "side": s["side"], "mode": mode,
+                    "entry_time": idx[i0], "exit_time": idx[r["j"]] + timedelta(minutes=5),
+                    "entry": s["entry"], "exit": r["exit"], "why": r["why"],
+                    "net": net_pct(s["side"], s["entry"], r["exit"]), "candles": r["j"] - i0 + 1})
+    return out
+
+
+# ------------------------------------------------------------------ results at Rs 1000 per trade
+def no_overlap(trades):
+    """A new signal is skipped while an earlier trade in the same stock (same strategy and style) is still open."""
+    out, busy = [], {}
+    for t in sorted(trades, key=lambda x: x["entry_time"]):
+        if busy.get(t["name"]) is not None and t["entry_time"] < busy[t["name"]]:
+            continue
+        busy[t["name"]] = t["exit_time"]
+        out.append(t)
+    return out
+
+
+def peak_open(trades):
+    ev = sorted([(t["entry_time"], 1) for t in trades] + [(t["exit_time"], -1) for t in trades],
+                key=lambda e: (e[0], e[1]))
+    cur = peak = 0
+    for _, d in ev:
+        cur += d
+        peak = max(peak, cur)
+    return peak
+
+
+def stats1k(trades):
+    n = len(trades)
+    pnl = [PER_TRADE * t["net"] / 100 for t in trades]
+    wins = [t for t in trades if t["net"] > 0]
+    loss = [t for t in trades if t["net"] <= 0]
+    gw = sum(p for p in pnl if p > 0)
+    gl = -sum(p for p in pnl if p <= 0)
+    by = lambda f: [t for t in trades if f(t)]
     wp = lambda lst: (100 * sum(t["net"] > 0 for t in lst) / len(lst)) if lst else 0.0
     return {
-        "n": n, "wins": len(wins), "losses": len(loss), "skipped": skipped,
+        "n": n, "wins": len(wins), "losses": len(loss),
         "win_pct": 100 * len(wins) / n if n else 0.0, "loss_pct": 100 * len(loss) / n if n else 0.0,
-        "target": sum(t["why"] == "TARGET" for t in taken), "sl": sum(t["why"] == "SL" for t in taken),
-        "time": sum(t["why"] == "TIME" for t in taken),
         "avg_win": float(np.mean([t["net"] for t in wins])) if wins else 0.0,
         "avg_loss": float(np.mean([t["net"] for t in loss])) if loss else 0.0,
+        "pnl": float(sum(pnl)), "avg_pnl": float(sum(pnl) / n) if n else 0.0,
+        "avg_pct": float(np.mean([t["net"] for t in trades])) if n else 0.0,
+        "best": max((t["net"] for t in trades), default=0.0), "worst": min((t["net"] for t in trades), default=0.0),
+        "target": sum(t["why"] == "TARGET" for t in trades), "sl": sum(t["why"] == "SL" for t in trades),
+        "time": sum(t["why"] == "TIME" for t in trades),
         "pf": (gw / gl) if gl > 0 else (float("inf") if gw > 0 else 0.0),
-        "final": final, "profit": final - START, "ret": (final / START - 1) * 100, "maxdd": dd,
         "long_n": len(by(lambda t: t["side"] == "LONG")), "long_w": wp(by(lambda t: t["side"] == "LONG")),
         "short_n": len(by(lambda t: t["side"] == "SHORT")), "short_w": wp(by(lambda t: t["side"] == "SHORT")),
-        "n50_n": len(by(lambda t: not (t["name"] in NEXT50 or t["name"] == "NIFTY NEXT 50"))),
-        "n50_w": wp(by(lambda t: not (t["name"] in NEXT50 or t["name"] == "NIFTY NEXT 50"))),
-        "nx_n": len(by(lambda t: t["name"] in NEXT50 or t["name"] == "NIFTY NEXT 50")),
-        "nx_w": wp(by(lambda t: t["name"] in NEXT50 or t["name"] == "NIFTY NEXT 50")),
-        "best": max((t["net"] for t in taken), default=0.0), "worst": min((t["net"] for t in taken), default=0.0),
+        "peak": peak_open(trades),
     }
 
 
 # ------------------------------------------------------------------ report
-LABEL = {"intraday": "इंट्राडे (उसी दिन बंद)", "swing": f"स्विंग (अधिकतम {SWING_MAX // 7} दिन)"}
-
-
-def block(mode, s):
+def block(strat, mode, s):
+    head = f"*{STRAT[strat]} — {LABEL[mode]}* (हर ट्रेड ₹{PER_TRADE:,.0f})"
+    if not s["n"]:
+        return head + "\n```\nइस अवधि में कोई ट्रेड नहीं बना\n```"
     pf = "∞" if s["pf"] == float("inf") else f"{s['pf']:.2f}"
-    return (f"*{LABEL[mode]}*\n```\n"
-            f"कुल ट्रेड      : {s['n']}  (छूटे: {s['skipped']})\n"
-            f"जीत / हार      : {s['wins']} / {s['losses']}\n"
-            f"Win %  / Loss %: {s['win_pct']:.1f}% / {s['loss_pct']:.1f}%\n"
-            f"Target/SL/Time : {s['target']} / {s['sl']} / {s['time']}\n"
-            f"औसत जीत / हार  : {s['avg_win']:+.2f}% / {s['avg_loss']:+.2f}%\n"
-            f"Profit factor  : {pf}\n"
-            f"₹1000 से अंत में: ₹{s['final']:,.0f}  ({s['profit']:+,.0f}, {s['ret']:+.1f}%)\n"
-            f"Max drawdown   : {s['maxdd']:.1f}%\n"
+    k = PER_TRADE / 100
+    return (head + "\n```\n"
+            f"कुल ट्रेड        : {s['n']}\n"
+            f"जीत / हार        : {s['wins']} / {s['losses']}\n"
+            f"Win % / Loss %   : {s['win_pct']:.1f}% / {s['loss_pct']:.1f}%\n"
+            f"औसत जीत          : {s['avg_win']:+.2f}%  (₹{s['avg_win'] * k:+.1f})\n"
+            f"औसत हार          : {s['avg_loss']:+.2f}%  (₹{s['avg_loss'] * k:+.1f})\n"
+            f"कुल लाभ/हानि     : ₹{s['pnl']:+,.0f}\n"
+            f"प्रति ट्रेड औसत  : ₹{s['avg_pnl']:+.1f} ({s['avg_pct']:+.2f}%)\n"
+            f"सबसे अच्छा/बुरा  : {s['best']:+.2f}% / {s['worst']:+.2f}%\n"
+            f"Target/SL/Time   : {s['target']} / {s['sl']} / {s['time']}\n"
             f"Long  : {s['long_n']} ट्रेड, win {s['long_w']:.0f}%\n"
             f"Short : {s['short_n']} ट्रेड, win {s['short_w']:.0f}%\n"
-            f"Nifty 50     : {s['n50_n']} ट्रेड, win {s['n50_w']:.0f}%\n"
-            f"Nifty Next 50: {s['nx_n']} ट्रेड, win {s['nx_w']:.0f}%\n"
-            f"सबसे अच्छा / बुरा: {s['best']:+.2f}% / {s['worst']:+.2f}%\n```")
+            f"Profit factor    : {pf}\n"
+            f"एक साथ अधिकतम खुले: {s['peak']} (पूंजी ≈ ₹{s['peak'] * PER_TRADE:,.0f})\n```")
 
 
 def compare_text(res, base):
-    """Filters on vs off, side by side."""
-    out = ["*फ़िल्टर का असर* (Nifty दिशा + सेक्टर + volume 1.5x)\n```"]
-    for m in ("intraday", "swing"):
-        f, b = res[m], base[m]
-        out.append(f"{LABEL[m].split(' ')[0]}\n"
-                   f" बिना फ़िल्टर : {b['n']:>3} ट्रेड, win {b['win_pct']:.0f}%, ₹{b['final']:,.0f}\n"
-                   f" फ़िल्टर संग  : {f['n']:>3} ट्रेड, win {f['win_pct']:.0f}%, ₹{f['final']:,.0f}")
+    out = ["*फ़िल्टर का असर* (Nifty दिशा + सेक्टर; B में volume भी)\n```"]
+    for st in ("A", "B"):
+        for m in ("intraday", "swing"):
+            if (st, m) not in res or (st, m) not in base:
+                continue
+            f, b = res[(st, m)], base[(st, m)]
+            out.append(f"{st} {LABEL[m].split(' ')[0]}\n"
+                       f" बिना फ़िल्टर : {b['n']:>4} ट्रेड, win {b['win_pct']:.0f}%, ₹{b['pnl']:+,.0f}\n"
+                       f" फ़िल्टर संग  : {f['n']:>4} ट्रेड, win {f['win_pct']:.0f}%, ₹{f['pnl']:+,.0f}")
     out.append("```")
     return "\n".join(out)
 
 
-def report_text(res, span, n_sym):
-    head = (f"🧪 *बैक-टेस्ट — Elliott Wave रणनीति (फ़िल्टर के साथ)*\n{span}, {n_sym} शेयर/इंडेक्स, 1 घंटे की candles\n"
-            f"पूंजी ₹{START:,.0f}; हर ट्रेड में पूंजी का {SLOT * 100:.0f}%, एक साथ अधिकतम {MAX_OPEN} ट्रेड, "
-            f"खर्च {COST:.2f}% प्रति ट्रेड।")
-    note = ("_Entry = सिग्नल के बाद वाली candle का open। एक ही candle में stop और target दोनों छुएँ तो stop पहले माना है। "
-            "आज के Nifty 100 की सूची पिछले समय पर लगाई है (survivorship bias), इसलिए असली नतीजे कुछ कमज़ोर हो सकते हैं। "
-            "Nifty/सेक्टर की दिशा उस घंटे तक की चाल से ली है (पिछले बंद भाव के मुक़ाबले)। "
-            "पिछला प्रदर्शन आगे की गारंटी नहीं। केवल जानकारी, निवेश सलाह नहीं।_")
-    return head, [block(m, res[m]) for m in ("intraday", "swing")], note
+def head_text(spanB, spanA, nB, nA):
+    return (f"🧪 *बैक-टेस्ट — दोनों रणनीतियाँ, हर ट्रेड ₹{PER_TRADE:,.0f}*\n"
+            f"A (टॉप गेनर/लूज़र + volume): {spanA}, {nA} शेयर, 5-मिनट candles\n"
+            f"B (Elliott Wave): {spanB}, {nB} शेयर/इंडेक्स, 1 घंटे की candles\n"
+            f"हर ट्रेड अलग है (पूंजी बढ़ाकर दोबारा नहीं लगाई), खर्च {COST:.2f}% प्रति ट्रेड।")
 
 
-def curve_png(curves, span):
+NOTE = ("_₹1000 की जगह किसी भी रकम पर % वही रहेगा, ₹ उसी अनुपात में बढ़ेगा/घटेगा। "
+        "A में फ़ैसला पहली 5-मिनट candle (9:15–9:20) के अंत पर लिया है; Entry उसी का बंद भाव। "
+        "एक ही candle में stop और target दोनों छुएँ तो stop पहले माना है। "
+        "आज के Nifty 100 की सूची पिछले समय पर लगाई है (survivorship bias), इसलिए असली नतीजे कुछ कमज़ोर हो सकते हैं। "
+        "Nifty/सेक्टर की दिशा उस समय तक की चाल से ली है (पिछले बंद भाव के मुक़ाबले)। "
+        "पिछला प्रदर्शन आगे की गारंटी नहीं। केवल जानकारी, निवेश सलाह नहीं।_")
+
+
+def curve_png(trades_by, span):
     import io
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(figsize=(10, 5), dpi=100, facecolor=ew_scan.BG)
     ax.set_facecolor(ew_scan.BG)
-    for mode, col in (("intraday", ew_scan.GOLD), ("swing", ew_scan.BLUE)):
-        pts = [(t, e) for t, e in curves[mode] if t is not None]
-        if pts:
-            ax.plot([t for t, _ in pts], [e for _, e in pts], color=col, lw=1.8, label=LABEL[mode])
-    ax.axhline(START, color=ew_scan.MUTED, lw=0.8, ls="--")
-    ax.set_title(f"₹{START:,.0f} की पूंजी: Elliott रणनीति ({span})", color="white", fontsize=13)
+    cols = {("A", "intraday"): ew_scan.GOLD, ("A", "swing"): "#ff8a3d",
+            ("B", "intraday"): ew_scan.BLUE, ("B", "swing"): ew_scan.GREEN}
+    for key, trades in trades_by.items():
+        if not trades:
+            continue
+        tr = sorted(trades, key=lambda t: t["exit_time"])
+        cum = np.cumsum([PER_TRADE * t["net"] / 100 for t in tr])
+        ax.plot([t["exit_time"] for t in tr], cum, color=cols[key], lw=1.6, label=f"{key[0]} {key[1]}")
+    ax.axhline(0, color=ew_scan.MUTED, lw=0.8, ls="--")
+    ax.set_title(f"Cumulative P&L (Rs, Rs {PER_TRADE:,.0f} per trade): {span}", color="white", fontsize=12)
     ax.tick_params(colors=ew_scan.MUTED)
     ax.grid(color=ew_scan.GRID, lw=0.8)
     for sp in ax.spines.values():
@@ -258,40 +330,75 @@ def load_history(days):
     return candles.load(tick, days, WARM + 60, datetime.now(IST))
 
 
-def run(data, dry=False, csv_path="backtest_trades.csv"):
-    items = list(data.items())
-    try:
-        with Pool(max(1, (os.cpu_count() or 2))) as pool:
-            scanned = pool.map(scan_symbol, items, chunksize=4)
-    except Exception as e:                                   # no multiprocessing: run in one process
-        print(f"pool failed ({e!r}); single process", file=sys.stderr)
-        scanned = [scan_symbol(x) for x in items]
-    states = [s for _, lst in scanned for s in lst]
-    ctx = filters.Ctx(data)
-    vols = {n: filters.slot_ratio(df) for n, df in data.items()}
-    sigs = signals_from_states(data, states, ctx, vols, True)
-    raw = signals_from_states(data, states, ctx, vols, False)
-    print(f"signals: {len(sigs)} with filters, {len(raw)} without")
-    res, curves, rows, base = {}, {}, [], {}
-    for mode in ("intraday", "swing"):
-        taken, curve, skipped = portfolio(trades_from_signals(data, sigs, mode))
-        res[mode], curves[mode] = stats(taken, curve, skipped), curve
-        rows += taken
-        base[mode] = stats(*portfolio(trades_from_signals(data, raw, mode)))
+def load_history5(days=A_DAYS):
+    tick = {"NIFTY 50": "^NSEI"}
+    tick.update({s: s + ".NS" for s in UNIVERSE})
+    import candles
+    return candles.load(tick, days, 300, datetime.now(IST), interval="5m")
+
+
+def _span(data):
+    if not data:
+        return "-"
     first = min(df.index[0] for df in data.values())
     last = max(df.index[-1] for df in data.values())
-    span = f"{first:%d %b %Y} से {last:%d %b %Y}"
-    head, blocks, note = report_text(res, span, len(data))
-    note = compare_text(res, base) + "\n\n" + note
+    return f"{first:%d %b %Y} से {last:%d %b %Y}"
+
+
+def run(data, data5=None, dry=False, csv_path="backtest_trades.csv"):
+    cfg = load_criteria()
+    res, base, taken = {}, {}, {}
+    # ---------------- B: Elliott (1h)
+    if data:
+        items = list(data.items())
+        try:
+            with Pool(max(1, (os.cpu_count() or 2))) as pool:
+                scanned = pool.map(scan_symbol, items, chunksize=4)
+        except Exception as e:                               # no multiprocessing: run in one process
+            print(f"pool failed ({e!r}); single process", file=sys.stderr)
+            scanned = [scan_symbol(x) for x in items]
+        states = [s for _, lst in scanned for s in lst]
+        ctx = filters.Ctx(data)
+        vols = {n: filters.slot_ratio(df) for n, df in data.items()}
+        sig_f = signals_from_states(data, states, ctx, vols, True)
+        sig_r = signals_from_states(data, states, ctx, vols, False)
+        print(f"B signals: {len(sig_f)} with filters, {len(sig_r)} without")
+        for mode in ("intraday", "swing"):
+            taken[("B", mode)] = no_overlap(trades_B(data, sig_f, mode))
+            res[("B", mode)] = stats1k(taken[("B", mode)])
+            base[("B", mode)] = stats1k(no_overlap(trades_B(data, sig_r, mode)))
+    # ---------------- A: top gainer / loser + volume (5 min)
+    if data5:
+        ctx5 = filters.Ctx(data5)
+        vols5 = {n: filters.slot_ratio(df) for n, df in data5.items()}
+        a_f = scan_movers(data5, cfg, ctx5, vols5, True)
+        a_r = scan_movers(data5, cfg, ctx5, vols5, False)
+        print(f"A signals: {len(a_f)} with filters, {len(a_r)} without")
+        for mode in ("intraday", "swing"):
+            taken[("A", mode)] = no_overlap(trades_A(data5, a_f, mode))
+            res[("A", mode)] = stats1k(taken[("A", mode)])
+            base[("A", mode)] = stats1k(no_overlap(trades_A(data5, a_r, mode)))
+    rows = [t for lst in taken.values() for t in lst]
     if rows:
-        pd.DataFrame(rows).drop(columns=["size"], errors="ignore").to_csv(csv_path, index=False)
+        pd.DataFrame(rows).to_csv(csv_path, index=False)
+    head = head_text(_span(data), _span(data5), len(data or {}), len(data5 or {}) - (1 if data5 else 0))
+    msgs = []
+    if data5:
+        msgs.append(head + "\n\n" + block("A", "intraday", res[("A", "intraday")]) + "\n\n"
+                    + block("A", "swing", res[("A", "swing")]))
+    else:
+        msgs.append(head + "\n\n⚠️ A का test नहीं हो पाया (5-मिनट का डेटा नहीं मिला)।")
+    if data:
+        msgs.append(block("B", "intraday", res[("B", "intraday")]) + "\n\n" + block("B", "swing", res[("B", "swing")]))
+    msgs.append(compare_text(res, base) + "\n\n" + NOTE)
     if dry:
-        print(head, "\n"); [print(b, "\n") for b in blocks]; print(note)
+        for m in msgs:
+            print(m, "\n")
         return res
-    ew_scan.send_text(head + "\n\n" + blocks[0])
-    ew_scan.send_text(blocks[1] + "\n\n" + note)
+    for m in msgs:
+        ew_scan.send_text(m)
     try:
-        ew_scan.send_photo(curve_png(curves, span), f"₹{START:,.0f} की पूंजी का ग्राफ")
+        ew_scan.send_photo(curve_png(taken, _span(data5 or data)), f"₹{PER_TRADE:,.0f} प्रति ट्रेड: कुल लाभ/हानि का ग्राफ")
     except Exception as e:
         print(f"chart failed: {e!r}", file=sys.stderr)
     return res
@@ -305,9 +412,16 @@ def main():
         sys.exit("yfinance not installed")
     data = load_history(days)
     if len(data) < 40:
-        sys.exit(f"Only {len(data)} symbols loaded; aborting.")
-    print(f"loaded {len(data)} symbols, {days} days")
-    run(data, dry="--dry" in sys.argv)
+        print(f"Only {len(data)} hourly symbols loaded; B skipped.", file=sys.stderr)
+        data = None
+    data5 = load_history5()
+    if len(data5) < 40:
+        print(f"Only {len(data5)} five-minute symbols loaded; A skipped.", file=sys.stderr)
+        data5 = None
+    if not data and not data5:
+        sys.exit("No data loaded; aborting.")
+    print(f"loaded B: {len(data or {})} symbols, A: {len(data5 or {})} symbols")
+    run(data, data5, dry="--dry" in sys.argv)
 
 
 if __name__ == "__main__":
