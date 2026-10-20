@@ -65,7 +65,7 @@ jobs:
           ANGEL_PIN: ${{ secrets.ANGEL_PIN }}
           ANGEL_TOTP_SECRET: ${{ secrets.ANGEL_TOTP_SECRET }}
       - name: Save paper-trading book
-        if: steps.win.outputs.ok == 'true' && inputs.mode == 'alert'
+        if: steps.win.outputs.ok == 'true' && (inputs.mode == 'alert' || inputs.mode == 'full' || inputs.mode == '')
         run: |
           git config user.name "nifty-bot"
           git config user.email "nifty-bot@users.noreply.github.com"
