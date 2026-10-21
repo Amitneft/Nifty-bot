@@ -76,6 +76,42 @@
      "sig_time": "2026-10-21T11:45:48.198932+05:30",
      "mode": "intraday",
      "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "EICHERMOT",
+     "side": "SHORT",
+     "entry": 7113.0,
+     "stop": 7148.55,
+     "t1": 7041.85,
+     "t2": 7041.85,
+     "sig_time": "2026-10-21T12:00:49.451653+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "CUMMINSIND",
+     "side": "SHORT",
+     "entry": 4424.3,
+     "stop": 4446.4,
+     "t1": 4380.05,
+     "t2": 4380.05,
+     "sig_time": "2026-10-21T12:00:49.451653+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "MOTHERSON",
+     "side": "SHORT",
+     "entry": 156.5,
+     "stop": 157.25,
+     "t1": 154.95,
+     "t2": 154.95,
+     "sig_time": "2026-10-21T12:00:49.451653+05:30",
+     "mode": "intraday",
+     "size": 1000.0
     }
    ],
    "closed": [
@@ -262,6 +298,42 @@
      "t1": 407.15,
      "t2": 407.15,
      "sig_time": "2026-10-21T11:45:48.198932+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "EICHERMOT",
+     "side": "SHORT",
+     "entry": 7113.0,
+     "stop": 7148.55,
+     "t1": 7041.85,
+     "t2": 7041.85,
+     "sig_time": "2026-10-21T12:00:49.451653+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "CUMMINSIND",
+     "side": "SHORT",
+     "entry": 4424.3,
+     "stop": 4446.4,
+     "t1": 4380.05,
+     "t2": 4380.05,
+     "sig_time": "2026-10-21T12:00:49.451653+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "MOTHERSON",
+     "side": "SHORT",
+     "entry": 156.5,
+     "stop": 157.25,
+     "t1": 154.95,
+     "t2": 154.95,
+     "sig_time": "2026-10-21T12:00:49.451653+05:30",
      "mode": "swing",
      "size": 1000.0
     }
