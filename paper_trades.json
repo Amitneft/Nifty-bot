@@ -4,7 +4,56 @@
  "per_trade": 1000.0,
  "books": {
   "A_intraday": {
-   "open": [],
+   "open": [
+    {
+     "strat": "A",
+     "name": "ULTRACEMCO",
+     "side": "LONG",
+     "entry": 10914.0,
+     "stop": 10859.45,
+     "t1": 11023.15,
+     "t2": 11023.15,
+     "sig_time": "2026-10-21T09:30:53.375270+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "RELIANCE",
+     "side": "LONG",
+     "entry": 1225.5,
+     "stop": 1219.35,
+     "t1": 1237.75,
+     "t2": 1237.75,
+     "sig_time": "2026-10-21T09:30:53.375270+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "BHARTIARTL",
+     "side": "LONG",
+     "entry": 1899.1,
+     "stop": 1889.6,
+     "t1": 1918.1,
+     "t2": 1918.1,
+     "sig_time": "2026-10-21T09:30:53.375270+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "WIPRO",
+     "side": "LONG",
+     "entry": 188.55,
+     "stop": 187.6,
+     "t1": 190.45,
+     "t2": 190.45,
+     "sig_time": "2026-10-21T09:30:53.375270+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    }
+   ],
    "closed": [
     {
      "name": "HINDZINC",
@@ -31,7 +80,56 @@
    ]
   },
   "A_swing": {
-   "open": [],
+   "open": [
+    {
+     "strat": "A",
+     "name": "ULTRACEMCO",
+     "side": "LONG",
+     "entry": 10914.0,
+     "stop": 10859.45,
+     "t1": 11023.15,
+     "t2": 11023.15,
+     "sig_time": "2026-10-21T09:30:53.375270+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "RELIANCE",
+     "side": "LONG",
+     "entry": 1225.5,
+     "stop": 1219.35,
+     "t1": 1237.75,
+     "t2": 1237.75,
+     "sig_time": "2026-10-21T09:30:53.375270+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "BHARTIARTL",
+     "side": "LONG",
+     "entry": 1899.1,
+     "stop": 1889.6,
+     "t1": 1918.1,
+     "t2": 1918.1,
+     "sig_time": "2026-10-21T09:30:53.375270+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "WIPRO",
+     "side": "LONG",
+     "entry": 188.55,
+     "stop": 187.6,
+     "t1": 190.45,
+     "t2": 190.45,
+     "sig_time": "2026-10-21T09:30:53.375270+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    }
+   ],
    "closed": [
     {
      "name": "HINDZINC",
