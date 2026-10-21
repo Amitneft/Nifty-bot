@@ -4,11 +4,61 @@
  "per_trade": 1000.0,
  "books": {
   "A_intraday": {
-   "open": [],
+   "open": [
+    {
+     "strat": "A",
+     "name": "HINDZINC",
+     "side": "LONG",
+     "entry": 553.85,
+     "stop": 551.1,
+     "t1": 559.4,
+     "t2": 559.4,
+     "sig_time": "2026-10-21T09:15:42.051809+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "UNIONBANK",
+     "side": "LONG",
+     "entry": 184.2,
+     "stop": 183.3,
+     "t1": 186.05,
+     "t2": 186.05,
+     "sig_time": "2026-10-21T09:15:42.051809+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    }
+   ],
    "closed": []
   },
   "A_swing": {
-   "open": [],
+   "open": [
+    {
+     "strat": "A",
+     "name": "HINDZINC",
+     "side": "LONG",
+     "entry": 553.85,
+     "stop": 551.1,
+     "t1": 559.4,
+     "t2": 559.4,
+     "sig_time": "2026-10-21T09:15:42.051809+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "UNIONBANK",
+     "side": "LONG",
+     "entry": 184.2,
+     "stop": 183.3,
+     "t1": 186.05,
+     "t2": 186.05,
+     "sig_time": "2026-10-21T09:15:42.051809+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    }
+   ],
    "closed": []
   },
   "B_intraday": {
