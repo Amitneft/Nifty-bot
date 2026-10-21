@@ -28,6 +28,54 @@
      "sig_time": "2026-10-21T10:15:40.443110+05:30",
      "mode": "intraday",
      "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "MAXHEALTH",
+     "side": "SHORT",
+     "entry": 819.25,
+     "stop": 823.35,
+     "t1": 811.05,
+     "t2": 811.05,
+     "sig_time": "2026-10-21T11:30:56.957251+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "ABB",
+     "side": "SHORT",
+     "entry": 6643.0,
+     "stop": 6676.2,
+     "t1": 6576.55,
+     "t2": 6576.55,
+     "sig_time": "2026-10-21T11:30:56.957251+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "MUTHOOTFIN",
+     "side": "SHORT",
+     "entry": 2471.0,
+     "stop": 2483.35,
+     "t1": 2446.3,
+     "t2": 2446.3,
+     "sig_time": "2026-10-21T11:30:56.957251+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "SIEMENS",
+     "side": "SHORT",
+     "entry": 3514.8,
+     "stop": 3532.35,
+     "t1": 3479.65,
+     "t2": 3479.65,
+     "sig_time": "2026-10-21T11:30:56.957251+05:30",
+     "mode": "intraday",
+     "size": 1000.0
     }
    ],
    "closed": [
@@ -133,6 +181,54 @@
      "t1": 266.5,
      "t2": 266.5,
      "sig_time": "2026-10-21T10:15:40.443110+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "MAXHEALTH",
+     "side": "SHORT",
+     "entry": 819.25,
+     "stop": 823.35,
+     "t1": 811.05,
+     "t2": 811.05,
+     "sig_time": "2026-10-21T11:30:56.957251+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "ABB",
+     "side": "SHORT",
+     "entry": 6643.0,
+     "stop": 6676.2,
+     "t1": 6576.55,
+     "t2": 6576.55,
+     "sig_time": "2026-10-21T11:30:56.957251+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "MUTHOOTFIN",
+     "side": "SHORT",
+     "entry": 2471.0,
+     "stop": 2483.35,
+     "t1": 2446.3,
+     "t2": 2446.3,
+     "sig_time": "2026-10-21T11:30:56.957251+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "SIEMENS",
+     "side": "SHORT",
+     "entry": 3514.8,
+     "stop": 3532.35,
+     "t1": 3479.65,
+     "t2": 3479.65,
+     "sig_time": "2026-10-21T11:30:56.957251+05:30",
      "mode": "swing",
      "size": 1000.0
     }
