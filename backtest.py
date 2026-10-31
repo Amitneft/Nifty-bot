@@ -12,7 +12,7 @@ If one candle touches both stop and target, the stop counts first.
  swing    : held until stop / target, at most 5 trading days
 Every trade is independent and uses Rs 1000 (so no compounding); costs 0.10% per trade.
 The result is also shown without the filters, to see what they change.
-Run:  python backtest.py [--days 365] [--dry]     (--days = history for strategy B)
+Run:  python backtest.py [--days 365] [--adays 90] [--dry]     (--days = history for B, --adays = for A)
 """
 import json, os, sys
 from datetime import datetime, timedelta
@@ -265,6 +265,22 @@ def block(strat, mode, s):
             f"एक साथ अधिकतम खुले: {s['peak']} (पूंजी ≈ ₹{s['peak'] * PER_TRADE:,.0f})\n```")
 
 
+def year_text(taken):
+    """Year-by-year table (by the year the trade was entered): trades, win %, Rs P&L, for each strategy and style."""
+    out = ["*साल-वार नतीजा* (हर ट्रेड ₹%d)" % PER_TRADE]
+    for (st, mode), trades in sorted(taken.items()):
+        if not trades:
+            continue
+        rows = []
+        for y in sorted({t["entry_time"].year for t in trades}):
+            ts = [t for t in trades if t["entry_time"].year == y]
+            w = sum(t["net"] > 0 for t in ts)
+            pnl = sum(PER_TRADE * t["net"] / 100 for t in ts)
+            rows.append(f"{y}  {len(ts):5d}  {100 * w / len(ts):5.1f}%  {pnl:+9,.0f}")
+        out.append(f"*{STRAT[st]} — {LABEL[mode]}*\n```\nसाल  ट्रेड    Win%      ₹ P&L\n" + "\n".join(rows) + "\n```")
+    return "\n".join(out) if len(out) > 1 else ""
+
+
 def compare_text(res, base):
     out = ["*फ़िल्टर का असर* (Nifty दिशा + सेक्टर; B में volume भी)\n```"]
     for st in ("A", "B"):
@@ -390,6 +406,9 @@ def run(data, data5=None, dry=False, csv_path="backtest_trades.csv"):
         msgs.append(head + "\n\n⚠️ A का test नहीं हो पाया (5-मिनट का डेटा नहीं मिला)।")
     if data:
         msgs.append(block("B", "intraday", res[("B", "intraday")]) + "\n\n" + block("B", "swing", res[("B", "swing")]))
+    yt = year_text(taken)
+    if yt:
+        msgs.append(yt + "\n_अधूरा साल (पहला/आख़िरी) कम दिनों का होता है, इसलिए ट्रेड कम दिख सकते हैं।_")
     msgs.append(compare_text(res, base) + "\n\n" + NOTE)
     if dry:
         for m in msgs:
@@ -407,14 +426,17 @@ def run(data, data5=None, dry=False, csv_path="backtest_trades.csv"):
 def main():
     days = 365
     if "--days" in sys.argv:
-        days = max(120, min(729, int(sys.argv[sys.argv.index("--days") + 1])))
+        days = max(120, min(1200, int(sys.argv[sys.argv.index("--days") + 1])))   # >729 days needs Angel One
+    adays = A_DAYS
+    if "--adays" in sys.argv:
+        adays = max(30, min(1200, int(sys.argv[sys.argv.index("--adays") + 1])))
     if yf is None:
         sys.exit("yfinance not installed")
     data = load_history(days)
     if len(data) < 40:
         print(f"Only {len(data)} hourly symbols loaded; B skipped.", file=sys.stderr)
         data = None
-    data5 = load_history5()
+    data5 = load_history5(adays)
     if len(data5) < 40:
         print(f"Only {len(data5)} five-minute symbols loaded; A skipped.", file=sys.stderr)
         data5 = None
@@ -426,3 +448,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+ 
