@@ -7,9 +7,13 @@ on:
         required: false
         default: "full"
       days:
-        description: "backtest only: how many days of history (120-729)"
+        description: "backtest only: days of 1-hour history for strategy B (120-1200)"
         required: false
         default: "365"
+      adays:
+        description: "backtest only: days of 5-minute history for strategy A (30-1200; Angel One needed beyond ~60)"
+        required: false
+        default: "90"
       force:
         description: "true = ignore the 09:10-16:00 weekday window (for tests)"
         required: false
@@ -77,7 +81,7 @@ jobs:
           fi
       - name: Back-test
         if: steps.win.outputs.ok == 'true' && inputs.mode == 'backtest'
-        run: python backtest.py --days ${{ inputs.days }}
+        run: python backtest.py --days ${{ inputs.days }} --adays ${{ inputs.adays }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -98,3 +102,4 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          
