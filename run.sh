@@ -9,7 +9,7 @@ set -a; . "$APP/.env"; set +a
 mkdir -p logs
 LOG="logs/$(date +%F).log"
 hm=$((10#$(TZ=Asia/Kolkata date +%H%M))); dow=$(TZ=Asia/Kolkata date +%u)
-if [ "$MODE" != backtest ] && [ "$MODE" != variants ] && [ "$MODE" != paper ] && [ "$FORCE" != true ]; then
+if [ "$MODE" != backtest ] && [ "$MODE" != variants ] && [ "$MODE" != orb ] && [ "$MODE" != paper ] && [ "$FORCE" != true ]; then
   if [ "$dow" -gt 5 ] || [ "$hm" -lt 910 ] || [ "$hm" -gt 1600 ]; then
     echo "$(date '+%F %T') $MODE: outside market window, skipped" >> "$LOG"; exit 0
   fi
@@ -23,6 +23,7 @@ case "$MODE" in
   alert)    "$PY" ew_alert.py $FF >> "$LOG" 2>&1 ;;
   backtest) "$PY" backtest.py --days "$DAYS" >> "$LOG" 2>&1 ;;
   variants) "$PY" variants.py --days "$DAYS" --adays "${3:-365}" >> "$LOG" 2>&1 ;;
+  orb)      "$PY" orb.py --adays "$DAYS" >> "$LOG" 2>&1 ;;
   paper)    "$PY" paper.py    >> "$LOG" 2>&1 ;;
   *) echo "unknown mode $MODE" >> "$LOG"; exit 2 ;;
 esac
