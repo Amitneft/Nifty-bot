@@ -3,7 +3,7 @@ on:
   workflow_dispatch:   # triggered by cron-job.org (GitHub's own cron is too late)
     inputs:
       mode:
-        description: "full = 9:15 report | alert = hourly alerts + paper trading | backtest = history test | variants = rule-variant test | paper = paper-trading summary"
+        description: "full = 9:15 report | alert = hourly alerts + paper trading | backtest = history test | variants = rule-variant test | orb = strategy C test | paper = paper-trading summary"
         required: false
         default: "full"
       days:
@@ -33,7 +33,7 @@ jobs:
         run: |
           hm=$((10#$(TZ=Asia/Kolkata date +%H%M)))
           dow=$(TZ=Asia/Kolkata date +%u)
-          if [ "$FORCE" = "true" ] || [ "$MODE" = "backtest" ] || [ "$MODE" = "variants" ] || [ "$MODE" = "paper" ] || { [ "$dow" -le 5 ] && [ "$hm" -ge 910 ] && [ "$hm" -le 1600 ]; }; then
+          if [ "$FORCE" = "true" ] || [ "$MODE" = "backtest" ] || [ "$MODE" = "variants" ] || [ "$MODE" = "orb" ] || [ "$MODE" = "paper" ] || { [ "$dow" -le 5 ] && [ "$hm" -ge 910 ] && [ "$hm" -le 1600 ]; }; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
           else
             echo "ok=false" >> "$GITHUB_OUTPUT"
@@ -106,10 +106,19 @@ jobs:
           ANGEL_CLIENT_CODE: ${{ secrets.ANGEL_CLIENT_CODE }}
           ANGEL_PIN: ${{ secrets.ANGEL_PIN }}
           ANGEL_TOTP_SECRET: ${{ secrets.ANGEL_TOTP_SECRET }}
+      - name: Strategy C (Opening Range Breakout) back-test
+        if: steps.win.outputs.ok == 'true' && inputs.mode == 'orb'
+        run: python orb.py --adays ${{ inputs.adays }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ANGEL_API_KEY: ${{ secrets.ANGEL_API_KEY }}
+          ANGEL_CLIENT_CODE: ${{ secrets.ANGEL_CLIENT_CODE }}
+          ANGEL_PIN: ${{ secrets.ANGEL_PIN }}
+          ANGEL_TOTP_SECRET: ${{ secrets.ANGEL_TOTP_SECRET }}
       - name: Paper-trading summary
         if: steps.win.outputs.ok == 'true' && inputs.mode == 'paper'
         run: python paper.py
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          
