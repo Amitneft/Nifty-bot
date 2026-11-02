@@ -84,7 +84,18 @@ def settle(st, hourly, five, now):
                     df = df[np.array(df.index.date) == day0]
                     eod = True
                 idx = df.index
-                pos = np.where(idx > pd.Timestamp(p["sig_time"]))[0]
+                sig = pd.Timestamp(p["sig_time"])
+                pos = np.where(idx > sig)[0]
+                age = (now - sig).days
+                # no candles / a hole right after the entry: the true path of the trade is unknown -> void it
+                hole = len(pos) > 0 and (idx[pos[0]] - sig) > pd.Timedelta(days=4)
+                if hole or (len(pos) == 0 and age >= 10):
+                    bk["closed"].append({"name": p["name"], "side": p["side"], "entry": p["entry"], "exit": p["entry"],
+                                         "why": "VOID", "net": 0.0, "pnl": 0.0, "opened": p["sig_time"],
+                                         "closed": str(now)})
+                    lines.append(f"⚪ [{s} {LABEL[m]}] {p['name']} {p['side']} (Entry {p['entry']:.2f}) रद्द: "
+                                 f"खुलने के बाद का बीच का डेटा नहीं मिला, इसलिए नतीजा गिना नहीं गया")
+                    continue
                 if len(pos) == 0:
                     keep.append(p); continue
                 r = run_trade(idx, df.Open.values, df.High.values, df.Low.values, df.Close.values, int(pos[0]),
@@ -132,7 +143,7 @@ def summary(st):
     for s in STRATS:
         for m in MODES:
             bk = st["books"][key(s, m)]
-            cl = bk["closed"]
+            cl = [c for c in bk["closed"] if c.get("why") != "VOID"]
             n = len(cl)
             total += n + len(bk["open"])
             w = sum(c["net"] > 0 for c in cl)
