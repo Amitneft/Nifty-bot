@@ -20,6 +20,9 @@ on:
         default: "false"
 permissions:
   contents: write
+concurrency:            # one run at a time: runs queue up instead of overlapping (no clashing paper_trades.json commits)
+  group: nifty-bot
+  cancel-in-progress: false
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -76,8 +79,12 @@ jobs:
           git add paper_trades.json || true
           if ! git diff --cached --quiet; then
             git commit -m "paper trades update [skip ci]"
-            git pull --rebase
-            git push
+            for i in 1 2 3; do
+              # on a clash, this run's paper_trades.json wins (it started from the newest book)
+              git pull --rebase -X theirs && git push && break
+              git rebase --abort 2>/dev/null || true
+              sleep 5
+            done
           fi
       - name: Back-test
         if: steps.win.outputs.ok == 'true' && inputs.mode == 'backtest'
@@ -122,3 +129,4 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          
