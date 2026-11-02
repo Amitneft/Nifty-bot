@@ -6,6 +6,8 @@ Run at ~:20 past each hour, 10:20-15:20 IST:   python ew_alert.py [--dry] [--for
 import os, sys
 from datetime import datetime
 
+import pandas as pd
+
 import ew_scan as ew
 import filters
 import paper
@@ -75,7 +77,10 @@ def paper_run(data, results, names, now, dry=False):
         a_open = paper.open_names(st, "A")
         if a_open:
             import candles
-            five = candles.load({n: n + ".NS" for n in a_open}, 7, 2, now, interval="5m")
+            oldest = min(pd.Timestamp(p["sig_time"]).date() for m in paper.MODES
+                         for p in st["books"][paper.key("A", m)]["open"])
+            span = min(55, max(7, (now.date() - oldest).days + 3))   # reach back to the oldest open trade
+            five = candles.load({n: n + ".NS" for n in a_open}, span, 2, now, interval="5m")
         lines = paper.settle(st, data, five, now)
         sigs = [{"strat": "B", "name": n, "side": results[n]["side"], "entry": float(results[n]["entry"]),
                  "stop": float(results[n]["stop"]), "t1": float(results[n]["target"]),
