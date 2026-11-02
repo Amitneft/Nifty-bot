@@ -40,7 +40,13 @@ def load(now):
             return new_state(now)
         for s in STRATS:
             for m in MODES:
-                st["books"].setdefault(key(s, m), {"open": [], "closed": []})
+                bk = st["books"].setdefault(key(s, m), {"open": [], "closed": []})
+                seen, uniq = set(), []                   # drop exact duplicates (e.g. after two overlapping runs)
+                for p in bk["open"]:
+                    k = (p["name"], p["side"], round(p["entry"], 2), str(p["sig_time"])[:10])
+                    if k not in seen:
+                        seen.add(k); uniq.append(p)
+                bk["open"] = uniq
         return st
     except Exception:
         return new_state(now)
@@ -91,8 +97,13 @@ def settle(st, hourly, five, now):
                 bk["closed"].append({"name": p["name"], "side": p["side"], "entry": p["entry"],
                                      "exit": float(r["exit"]), "why": r["why"], "net": net, "pnl": pnl,
                                      "opened": p["sig_time"], "closed": str(idx[r["j"]])})
+                planned = {"TARGET": p["t1"], "SL": p["stop"]}.get(r["why"])
+                gap = (f" ⚠️ gap: तय {planned:.2f} था, पर भाव सीधे {float(r['exit']):.2f} पर खुला"
+                       if planned and abs(float(r["exit"]) / planned - 1) > 0.0005 else "")
                 lines.append(f"{'✅' if net > 0 else '❌'} [{s} {LABEL[m]}] {p['name']} {p['side']} — {r['why']} — "
-                             f"Entry {p['entry']:.2f} → {float(r['exit']):.2f} ({net:+.2f}%), ₹{pnl:+.1f}")
+                             f"Entry {p['entry']:.2f} → {float(r['exit']):.2f} ({net:+.2f}%), ₹{pnl:+.1f}\n"
+                             f"   खुला {str(p['sig_time'])[:16].replace('T', ' ')}, बंद {str(idx[r['j']])[:16]}; "
+                             f"तय SL {p['stop']:.2f} / Target {p['t1']:.2f}{gap}")
             bk["open"] = keep
     return lines
 
