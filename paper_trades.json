@@ -4,7 +4,32 @@
  "per_trade": 1000.0,
  "books": {
   "A_intraday": {
-   "open": [],
+   "open": [
+    {
+     "strat": "A",
+     "name": "ULTRACEMCO",
+     "side": "LONG",
+     "entry": 11387.0,
+     "stop": 11330.05,
+     "t1": 11500.85,
+     "t2": 11500.85,
+     "sig_time": "2026-11-02T15:30:49.990065+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "BAJFINANCE",
+     "side": "LONG",
+     "entry": 959.4,
+     "stop": 954.6,
+     "t1": 969.0,
+     "t2": 969.0,
+     "sig_time": "2026-11-02T15:30:49.990065+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    }
+   ],
    "closed": [
     {
      "name": "HINDZINC",
@@ -607,6 +632,30 @@
      "t1": 1316.85,
      "t2": 1316.85,
      "sig_time": "2026-11-02T14:04:08.772332+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "ULTRACEMCO",
+     "side": "LONG",
+     "entry": 11387.0,
+     "stop": 11330.05,
+     "t1": 11500.85,
+     "t2": 11500.85,
+     "sig_time": "2026-11-02T15:30:49.990065+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "BAJFINANCE",
+     "side": "LONG",
+     "entry": 959.4,
+     "stop": 954.6,
+     "t1": 969.0,
+     "t2": 969.0,
+     "sig_time": "2026-11-02T15:30:49.990065+05:30",
      "mode": "swing",
      "size": 1000.0
     }
