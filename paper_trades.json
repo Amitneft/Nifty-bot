@@ -52,6 +52,78 @@
      "sig_time": "2026-11-02T09:34:33.406307+05:30",
      "mode": "intraday",
      "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "TATASTEEL",
+     "side": "LONG",
+     "entry": 174.3,
+     "stop": 173.45,
+     "t1": 176.05,
+     "t2": 176.05,
+     "sig_time": "2026-11-02T09:45:37.097535+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "NTPC",
+     "side": "LONG",
+     "entry": 327.35,
+     "stop": 325.7,
+     "t1": 330.6,
+     "t2": 330.6,
+     "sig_time": "2026-11-02T09:45:37.097535+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "TMPV",
+     "side": "LONG",
+     "entry": 271.75,
+     "stop": 270.4,
+     "t1": 274.45,
+     "t2": 274.45,
+     "sig_time": "2026-11-02T09:45:37.097535+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "ONGC",
+     "side": "LONG",
+     "entry": 229.15,
+     "stop": 228.0,
+     "t1": 231.45,
+     "t2": 231.45,
+     "sig_time": "2026-11-02T09:45:37.097535+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "M&M",
+     "side": "LONG",
+     "entry": 2883.8,
+     "stop": 2869.4,
+     "t1": 2912.65,
+     "t2": 2912.65,
+     "sig_time": "2026-11-02T09:45:37.097535+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "TATAPOWER",
+     "side": "LONG",
+     "entry": 353.45,
+     "stop": 351.7,
+     "t1": 357.0,
+     "t2": 357.0,
+     "sig_time": "2026-11-02T09:45:37.097535+05:30",
+     "mode": "intraday",
+     "size": 1000.0
     }
    ],
    "closed": [
@@ -357,6 +429,78 @@
      "t1": 402.2,
      "t2": 402.2,
      "sig_time": "2026-11-02T09:34:33.406307+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "TATASTEEL",
+     "side": "LONG",
+     "entry": 174.3,
+     "stop": 173.45,
+     "t1": 176.05,
+     "t2": 176.05,
+     "sig_time": "2026-11-02T09:45:37.097535+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "NTPC",
+     "side": "LONG",
+     "entry": 327.35,
+     "stop": 325.7,
+     "t1": 330.6,
+     "t2": 330.6,
+     "sig_time": "2026-11-02T09:45:37.097535+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "TMPV",
+     "side": "LONG",
+     "entry": 271.75,
+     "stop": 270.4,
+     "t1": 274.45,
+     "t2": 274.45,
+     "sig_time": "2026-11-02T09:45:37.097535+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "ONGC",
+     "side": "LONG",
+     "entry": 229.15,
+     "stop": 228.0,
+     "t1": 231.45,
+     "t2": 231.45,
+     "sig_time": "2026-11-02T09:45:37.097535+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "M&M",
+     "side": "LONG",
+     "entry": 2883.8,
+     "stop": 2869.4,
+     "t1": 2912.65,
+     "t2": 2912.65,
+     "sig_time": "2026-11-02T09:45:37.097535+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "TATAPOWER",
+     "side": "LONG",
+     "entry": 353.45,
+     "stop": 351.7,
+     "t1": 357.0,
+     "t2": 357.0,
+     "sig_time": "2026-11-02T09:45:37.097535+05:30",
      "mode": "swing",
      "size": 1000.0
     }
