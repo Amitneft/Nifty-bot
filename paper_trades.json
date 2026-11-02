@@ -4,7 +4,32 @@
  "per_trade": 1000.0,
  "books": {
   "A_intraday": {
-   "open": [],
+   "open": [
+    {
+     "strat": "A",
+     "name": "BANKBARODA",
+     "side": "LONG",
+     "entry": 248.85,
+     "stop": 247.6,
+     "t1": 251.35,
+     "t2": 251.35,
+     "sig_time": "2026-11-02T09:30:43.627846+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "DIVISLAB",
+     "side": "LONG",
+     "entry": 9925.5,
+     "stop": 9875.85,
+     "t1": 10024.75,
+     "t2": 10024.75,
+     "sig_time": "2026-11-02T09:30:43.627846+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    }
+   ],
    "closed": [
     {
      "name": "HINDZINC",
@@ -262,7 +287,32 @@
    ]
   },
   "A_swing": {
-   "open": [],
+   "open": [
+    {
+     "strat": "A",
+     "name": "BANKBARODA",
+     "side": "LONG",
+     "entry": 248.85,
+     "stop": 247.6,
+     "t1": 251.35,
+     "t2": 251.35,
+     "sig_time": "2026-11-02T09:30:43.627846+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "DIVISLAB",
+     "side": "LONG",
+     "entry": 9925.5,
+     "stop": 9875.85,
+     "t1": 10024.75,
+     "t2": 10024.75,
+     "sig_time": "2026-11-02T09:30:43.627846+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    }
+   ],
    "closed": [
     {
      "name": "HINDZINC",
