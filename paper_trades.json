@@ -124,6 +124,66 @@
      "sig_time": "2026-11-02T09:45:37.097535+05:30",
      "mode": "intraday",
      "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "MAXHEALTH",
+     "side": "LONG",
+     "entry": 890.95,
+     "stop": 886.5,
+     "t1": 899.85,
+     "t2": 899.85,
+     "sig_time": "2026-11-02T10:04:29.636651+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "BANKBARODA",
+     "side": "LONG",
+     "entry": 245.4,
+     "stop": 244.15,
+     "t1": 247.85,
+     "t2": 247.85,
+     "sig_time": "2026-11-02T10:04:29.636651+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "MUTHOOTFIN",
+     "side": "LONG",
+     "entry": 2460.1,
+     "stop": 2447.8,
+     "t1": 2484.7,
+     "t2": 2484.7,
+     "sig_time": "2026-11-02T10:04:29.636651+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "JINDALSTEL",
+     "side": "LONG",
+     "entry": 1082.9,
+     "stop": 1077.5,
+     "t1": 1093.75,
+     "t2": 1093.75,
+     "sig_time": "2026-11-02T10:04:29.636651+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "BOSCHLTD",
+     "side": "LONG",
+     "entry": 48095.0,
+     "stop": 47854.5,
+     "t1": 48575.95,
+     "t2": 48575.95,
+     "sig_time": "2026-11-02T10:04:29.636651+05:30",
+     "mode": "intraday",
+     "size": 1000.0
     }
    ],
    "closed": [
@@ -501,6 +561,66 @@
      "t1": 357.0,
      "t2": 357.0,
      "sig_time": "2026-11-02T09:45:37.097535+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "MAXHEALTH",
+     "side": "LONG",
+     "entry": 890.95,
+     "stop": 886.5,
+     "t1": 899.85,
+     "t2": 899.85,
+     "sig_time": "2026-11-02T10:04:29.636651+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "BANKBARODA",
+     "side": "LONG",
+     "entry": 245.4,
+     "stop": 244.15,
+     "t1": 247.85,
+     "t2": 247.85,
+     "sig_time": "2026-11-02T10:04:29.636651+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "MUTHOOTFIN",
+     "side": "LONG",
+     "entry": 2460.1,
+     "stop": 2447.8,
+     "t1": 2484.7,
+     "t2": 2484.7,
+     "sig_time": "2026-11-02T10:04:29.636651+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "JINDALSTEL",
+     "side": "LONG",
+     "entry": 1082.9,
+     "stop": 1077.5,
+     "t1": 1093.75,
+     "t2": 1093.75,
+     "sig_time": "2026-11-02T10:04:29.636651+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "BOSCHLTD",
+     "side": "LONG",
+     "entry": 48095.0,
+     "stop": 47854.5,
+     "t1": 48575.95,
+     "t2": 48575.95,
+     "sig_time": "2026-11-02T10:04:29.636651+05:30",
      "mode": "swing",
      "size": 1000.0
     }
