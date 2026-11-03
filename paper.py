@@ -114,7 +114,9 @@ def settle(st, hourly, five, now):
                 lines.append(f"{'✅' if net > 0 else '❌'} [{s} {LABEL[m]}] {p['name']} {p['side']} — {r['why']} — "
                              f"Entry {p['entry']:.2f} → {float(r['exit']):.2f} ({net:+.2f}%), ₹{pnl:+.1f}\n"
                              f"   खुला {str(p['sig_time'])[:16].replace('T', ' ')}, बंद {str(idx[r['j']])[:16]}; "
-                             f"तय SL {p['stop']:.2f} / Target {p['t1']:.2f}{gap}")
+                             f"तय SL {p['stop']:.2f} / Target {p['t1']:.2f}{gap}\n"
+                             f"   उस candle का O {df.Open.values[r['j']]:.2f} H {df.High.values[r['j']]:.2f} "
+                             f"L {df.Low.values[r['j']]:.2f} C {df.Close.values[r['j']]:.2f}")
             bk["open"] = keep
     return lines
 
