@@ -106,8 +106,16 @@ def build_trading(g, rows, vr, cfg, source, now, nifty_chg=None):
             f"शुरुआती मिनटों में चाल अस्थिर होती है। स्रोत: {source}। केवल जानकारी, निवेश सलाह नहीं।_")
 
 
+PAPER_A_UNTIL = (9, 45)      # paper trades for A are only opened by a morning run (up to 9:45 IST)
+
+
 def paper_open_A(ideas, now, dry):
-    """Take today's top gainer / loser ideas on paper (Rs 1000 each, intraday and swing book)."""
+    """Take the MORNING top gainer / loser ideas on paper (Rs 1000 each, intraday and swing book).
+    Only runs up to 09:40 - strategy A decides right after the open (like the back-test); a later manual
+    or repeated run still shows ideas in Telegram but does not open paper trades. Sends a Telegram note."""
+    if (now.hour, now.minute) > (9, 40):
+        print("paper trades (A): not opened (after 09:40, strategy A decides in the morning)")
+        return
     try:
         import paper
         st = paper.load(now)
@@ -117,7 +125,13 @@ def paper_open_A(ideas, now, dry):
         lines = paper.open_new(st, sigs, now)
         if lines and not dry:
             paper.save(st)
-        print(f"paper trades opened (A): {len(lines) // 2}")
+        opened = [x for x in sigs if any(f"] पेपर ट्रेड खुला: {x['name']} " in l for l in lines)]
+        print(f"paper trades opened (A): {len(opened)}")
+        if opened:
+            out_text("📒 *पेपर ट्रेड खुले (A: टॉप गेनर/लूज़र)* — इंट्राडे और स्विंग, हर ट्रेड ₹1000\n```\n"
+                     + "\n".join(f"{x['side']:<5} {x['name']}  Entry {x['entry']:.2f}  SL {x['stop']:.2f}  Target {x['t1']:.2f}"
+                                  for x in opened)
+                     + "\n```\n_ये वही शेयर हैं जो इसी रिपोर्ट के 'ट्रेड आइडिया' में दिखे। केवल जानकारी, निवेश सलाह नहीं।_", dry)
     except Exception as e:
         print(f"paper trading (A) failed: {e!r}", file=sys.stderr)
 
@@ -333,3 +347,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+      
