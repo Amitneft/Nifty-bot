@@ -40,6 +40,66 @@
      "sig_time": "2026-11-04T09:16:27.188266+05:30",
      "mode": "intraday",
      "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "BEL",
+     "side": "LONG",
+     "entry": 388.5,
+     "stop": 386.55,
+     "t1": 392.4,
+     "t2": 392.4,
+     "sig_time": "2026-11-04T09:30:45.439624+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "HDFCBANK",
+     "side": "LONG",
+     "entry": 740.65,
+     "stop": 736.95,
+     "t1": 748.05,
+     "t2": 748.05,
+     "sig_time": "2026-11-04T09:30:45.439624+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "APOLLOHOSP",
+     "side": "LONG",
+     "entry": 8556.5,
+     "stop": 8513.7,
+     "t1": 8642.05,
+     "t2": 8642.05,
+     "sig_time": "2026-11-04T09:30:45.439624+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "NESTLEIND",
+     "side": "LONG",
+     "entry": 1264.1,
+     "stop": 1257.8,
+     "t1": 1276.75,
+     "t2": 1276.75,
+     "sig_time": "2026-11-04T09:30:45.439624+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "HDFCAMC",
+     "side": "LONG",
+     "entry": 2491.8,
+     "stop": 2479.35,
+     "t1": 2516.7,
+     "t2": 2516.7,
+     "sig_time": "2026-11-04T09:30:45.439624+05:30",
+     "mode": "intraday",
+     "size": 1000.0
     }
    ],
    "closed": [
@@ -705,6 +765,66 @@
      "t1": 280.6,
      "t2": 280.6,
      "sig_time": "2026-11-04T09:16:27.188266+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "BEL",
+     "side": "LONG",
+     "entry": 388.5,
+     "stop": 386.55,
+     "t1": 392.4,
+     "t2": 392.4,
+     "sig_time": "2026-11-04T09:30:45.439624+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "HDFCBANK",
+     "side": "LONG",
+     "entry": 740.65,
+     "stop": 736.95,
+     "t1": 748.05,
+     "t2": 748.05,
+     "sig_time": "2026-11-04T09:30:45.439624+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "APOLLOHOSP",
+     "side": "LONG",
+     "entry": 8556.5,
+     "stop": 8513.7,
+     "t1": 8642.05,
+     "t2": 8642.05,
+     "sig_time": "2026-11-04T09:30:45.439624+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "NESTLEIND",
+     "side": "LONG",
+     "entry": 1264.1,
+     "stop": 1257.8,
+     "t1": 1276.75,
+     "t2": 1276.75,
+     "sig_time": "2026-11-04T09:30:45.439624+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "HDFCAMC",
+     "side": "LONG",
+     "entry": 2491.8,
+     "stop": 2479.35,
+     "t1": 2516.7,
+     "t2": 2516.7,
+     "sig_time": "2026-11-04T09:30:45.439624+05:30",
      "mode": "swing",
      "size": 1000.0
     }
