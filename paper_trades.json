@@ -28,6 +28,42 @@
      "sig_time": "2026-11-02T15:30:49.990065+05:30",
      "mode": "intraday",
      "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "TMPV",
+     "side": "SHORT",
+     "entry": 288.45,
+     "stop": 289.9,
+     "t1": 285.55,
+     "t2": 285.55,
+     "sig_time": "2026-11-06T09:16:34.306651+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "ONGC",
+     "side": "SHORT",
+     "entry": 226.4,
+     "stop": 227.5,
+     "t1": 224.15,
+     "t2": 224.15,
+     "sig_time": "2026-11-06T09:16:34.306651+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "CGPOWER",
+     "side": "SHORT",
+     "entry": 775.45,
+     "stop": 779.35,
+     "t1": 767.7,
+     "t2": 767.7,
+     "sig_time": "2026-11-06T09:16:34.306651+05:30",
+     "mode": "intraday",
+     "size": 1000.0
     }
    ],
    "closed": [
@@ -991,7 +1027,44 @@
    ]
   },
   "A_swing": {
-   "open": [],
+   "open": [
+    {
+     "strat": "A",
+     "name": "TMPV",
+     "side": "SHORT",
+     "entry": 288.45,
+     "stop": 289.9,
+     "t1": 285.55,
+     "t2": 285.55,
+     "sig_time": "2026-11-06T09:16:34.306651+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "ONGC",
+     "side": "SHORT",
+     "entry": 226.4,
+     "stop": 227.5,
+     "t1": 224.15,
+     "t2": 224.15,
+     "sig_time": "2026-11-06T09:16:34.306651+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "CGPOWER",
+     "side": "SHORT",
+     "entry": 775.45,
+     "stop": 779.35,
+     "t1": 767.7,
+     "t2": 767.7,
+     "sig_time": "2026-11-06T09:16:34.306651+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    }
+   ],
    "closed": [
     {
      "name": "HINDZINC",
