@@ -28,6 +28,42 @@
      "sig_time": "2026-11-02T15:30:49.990065+05:30",
      "mode": "intraday",
      "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "HINDALCO",
+     "side": "SHORT",
+     "entry": 924.45,
+     "stop": 929.05,
+     "t1": 915.2,
+     "t2": 915.2,
+     "sig_time": "2026-11-09T09:16:23.956646+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "HDFCBANK",
+     "side": "LONG",
+     "entry": 794.2,
+     "stop": 790.25,
+     "t1": 802.15,
+     "t2": 802.15,
+     "sig_time": "2026-11-09T09:16:23.956646+05:30",
+     "mode": "intraday",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "DIVISLAB",
+     "side": "LONG",
+     "entry": 11325.0,
+     "stop": 11268.4,
+     "t1": 11438.25,
+     "t2": 11438.25,
+     "sig_time": "2026-11-09T09:16:23.956646+05:30",
+     "mode": "intraday",
+     "size": 1000.0
     }
    ],
    "closed": [
@@ -1079,7 +1115,44 @@
    ]
   },
   "A_swing": {
-   "open": [],
+   "open": [
+    {
+     "strat": "A",
+     "name": "HINDALCO",
+     "side": "SHORT",
+     "entry": 924.45,
+     "stop": 929.05,
+     "t1": 915.2,
+     "t2": 915.2,
+     "sig_time": "2026-11-09T09:16:23.956646+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "HDFCBANK",
+     "side": "LONG",
+     "entry": 794.2,
+     "stop": 790.25,
+     "t1": 802.15,
+     "t2": 802.15,
+     "sig_time": "2026-11-09T09:16:23.956646+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "DIVISLAB",
+     "side": "LONG",
+     "entry": 11325.0,
+     "stop": 11268.4,
+     "t1": 11438.25,
+     "t2": 11438.25,
+     "sig_time": "2026-11-09T09:16:23.956646+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    }
+   ],
    "closed": [
     {
      "name": "HINDZINC",
