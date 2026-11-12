@@ -28,6 +28,18 @@
      "sig_time": "2026-11-02T15:30:49.990065+05:30",
      "mode": "intraday",
      "size": 1000.0
+    },
+    {
+     "strat": "A",
+     "name": "TATAPOWER",
+     "side": "LONG",
+     "entry": 366.25,
+     "stop": 364.4,
+     "t1": 369.9,
+     "t2": 369.9,
+     "sig_time": "2026-11-12T09:16:31.806149+05:30",
+     "mode": "intraday",
+     "size": 1000.0
     }
    ],
    "closed": [
@@ -1266,7 +1278,20 @@
    ]
   },
   "A_swing": {
-   "open": [],
+   "open": [
+    {
+     "strat": "A",
+     "name": "TATAPOWER",
+     "side": "LONG",
+     "entry": 366.25,
+     "stop": 364.4,
+     "t1": 369.9,
+     "t2": 369.9,
+     "sig_time": "2026-11-12T09:16:31.806149+05:30",
+     "mode": "swing",
+     "size": 1000.0
+    }
+   ],
    "closed": [
     {
      "name": "HINDZINC",
